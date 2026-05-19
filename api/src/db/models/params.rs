@@ -54,31 +54,9 @@ impl From<OtterBuildParams> for SolanaProgramBuildParams {
     }
 }
 
-/// Query params for verified programs list
-#[derive(Debug, Default, Deserialize, Serialize)]
-pub struct VerifiedProgramsQuery {
-    /// Optional search: valid address or HTTP/HTTPS URL to filter by program_id or repo
-    pub search: Option<String>,
-}
-
 /// Parameters for verification status requests
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct VerificationStatusParams {
     /// Program address to check
     pub address: String,
-}
-
-#[derive(Clone)]
-pub struct ProgramAuthorityParams {
-    pub authority: Option<String>,
-    pub frozen: bool,
-    pub closed: bool,
-}
-
-/// Complete program authority data from database
-#[derive(Debug, Clone)]
-pub struct ProgramAuthorityData {
-    pub authority: Option<String>,
-    pub is_frozen: bool,
-    pub is_closed: bool,
 }

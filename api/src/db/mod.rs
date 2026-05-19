@@ -9,9 +9,8 @@ pub mod job; // Job status and management
 pub mod logs; // Build logs operations
 pub mod models; // Database models and types
 pub mod params; // Build parameters operations
-pub mod programs; // Program verification status
 pub mod redis; // Redis cache operations
-pub mod verification; // Program verification operations
+pub mod verification; // Verification helpers / hooks (now minimal)
 
 // Re-export the DbClient for easier access
 pub use connection::DbClient;

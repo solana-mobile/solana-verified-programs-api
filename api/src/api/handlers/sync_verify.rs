@@ -8,8 +8,7 @@ use crate::{
         DbClient,
     },
     services::{
-        build_repository_url, get_on_chain_hash,
-        verification::{check_and_handle_duplicates, process_verification_request},
+        build_repository_url, get_on_chain_hash, verification::process_verification_request,
     },
 };
 use axum::{extract::State, http::StatusCode, Json};
@@ -88,11 +87,6 @@ async fn process_verification_sync(
                 .into(),
             ),
         );
-    }
-
-    // Check for existing verification
-    if let Some(response) = check_and_handle_duplicates(&payload, signer.clone(), &db).await {
-        return (StatusCode::OK, Json(response.into()));
     }
 
     // Create and insert build parameters

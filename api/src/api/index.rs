@@ -205,18 +205,6 @@ pub fn index() -> Json<Value> {
                     }
                 },
                 {
-                    "path": "/status-all/:address",
-                    "method": "GET",
-                    "description": "Get all verification information for a program",
-                    "params": {
-                        "address": {
-                            "type": "string",
-                            "required": true,
-                            "description": "Mainnet program address to check"
-                        }
-                    }
-                },
-                {
                     "path": "/job/:job_id",
                     "method": "GET",
                     "description": "Check status of an async verification job",
@@ -239,44 +227,6 @@ pub fn index() -> Json<Value> {
                             "description": "Job id (UUID)"
                         }
                     }
-                },
-                {
-                    "path": "/verified-programs",
-                    "method": "GET",
-                    "description": "Get list of all verified programs",
-                    "params": {},
-                    "query": {
-                        "search": {
-                            "type": "string",
-                            "required": false,
-                            "description": "Filter by program_id or repository (must be valid Solana address or HTTP/HTTPS URL)"
-                        }
-                    }
-                },
-                {
-                    "path": "/verified-programs/:page",
-                    "method": "GET",
-                    "description": "Get paginated list of verified programs",
-                    "params": {
-                        "page": {
-                            "type": "integer",
-                            "required": true,
-                            "description": "Page number (starting from 1)"
-                        }
-                    },
-                    "query": {
-                        "search": {
-                            "type": "string",
-                            "required": false,
-                            "description": "Filter by program_id or repository (must be valid Solana address or HTTP/HTTPS URL)"
-                        }
-                    }
-                },
-                {
-                    "path": "/verified-programs-status",
-                    "method": "GET",
-                    "description": "Get detailed status of all verified programs",
-                    "params": {}
                 },
             ]
         })

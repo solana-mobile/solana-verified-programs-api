@@ -1,4 +1,4 @@
-use crate::schema::{build_logs, solana_program_builds, verified_hashes, verified_programs};
+use crate::schema::{build_logs, solana_program_builds, verified_hashes};
 use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -25,39 +25,25 @@ pub(crate) const DEFAULT_SIGNER: Pubkey = system_program::id();
 )]
 #[diesel(table_name = solana_program_builds, primary_key(id))]
 pub struct SolanaProgramBuild {
-    /// Unique identifier for the build
     pub id: String,
-    /// Repository URL
     pub repository: String,
-    /// Git commit hash
     pub commit_hash: Option<String>,
-    /// Program ID
     pub program_id: String,
-    /// Library name
     pub lib_name: Option<String>,
-    /// Base Docker image
     pub base_docker_image: Option<String>,
-    /// Mount path in container
     pub mount_path: Option<String>,
-    /// Cargo build arguments
     pub cargo_args: Option<Vec<String>>,
-    /// BPF compilation flag
     pub bpf_flag: bool,
-    /// Build creation timestamp
     pub created_at: NaiveDateTime,
-    /// Build status
     pub status: String,
-    /// Signer's public key
     pub signer: Option<String>,
-    /// Architecture target v0,v1,v2,etc.
     pub arch: Option<String>,
 }
 
 impl<'a> From<&'a SolanaProgramBuildParams> for SolanaProgramBuild {
     fn from(params: &'a SolanaProgramBuildParams) -> Self {
-        let uuid = uuid::Uuid::new_v4().to_string();
         SolanaProgramBuild {
-            id: uuid.clone(),
+            id: uuid::Uuid::new_v4().to_string(),
             repository: params.repository.clone(),
             commit_hash: params.commit_hash.clone(),
             program_id: params.program_id.clone(),
@@ -72,104 +58,6 @@ impl<'a> From<&'a SolanaProgramBuildParams> for SolanaProgramBuild {
             arch: params.arch.clone(),
         }
     }
-}
-
-impl From<&VerificationData> for SolanaProgramBuild {
-    fn from(data: &VerificationData) -> Self {
-        SolanaProgramBuild {
-            id: data.solana_build_id.clone(),
-            repository: data.repository.clone(),
-            commit_hash: data.commit_hash.clone(),
-            program_id: data.program_id.clone(),
-            lib_name: data.lib_name.clone(),
-            base_docker_image: data.base_docker_image.clone(),
-            mount_path: data.mount_path.clone(),
-            cargo_args: data.cargo_args.clone(),
-            bpf_flag: data.bpf_flag,
-            created_at: data.verified_at,
-            status: JobStatus::Completed.into(),
-            signer: data.signer.clone(),
-            arch: data.arch.clone(),
-        }
-    }
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    Insertable,
-    Identifiable,
-    Queryable,
-    AsChangeset,
-    Selectable,
-    QueryableByName,
-)]
-#[diesel(table_name = verified_programs, primary_key(id))]
-pub struct VerifiedProgram {
-    /// Unique identifier
-    pub id: String,
-    /// Program ID
-    pub program_id: String,
-    /// Verification status
-    pub is_verified: bool,
-    /// Hash of the program on chain
-    pub on_chain_hash: String,
-    /// Hash of the executable
-    pub executable_hash: String,
-    /// Verification timestamp
-    pub verified_at: NaiveDateTime,
-    /// Build ID reference
-    pub solana_build_id: String,
-}
-
-/// Used for optimized single-query fetches in check_is_verified
-#[derive(Debug, Clone, QueryableByName)]
-#[allow(dead_code)]
-pub struct VerificationData {
-    // From verified_programs table
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub vp_id: String,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub program_id: String,
-    #[allow(dead_code)]
-    #[diesel(sql_type = diesel::sql_types::Bool)]
-    pub is_verified: bool,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub on_chain_hash: String,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub executable_hash: String,
-    #[diesel(sql_type = diesel::sql_types::Timestamp)]
-    pub verified_at: NaiveDateTime,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub solana_build_id: String,
-
-    // From solana_program_builds table
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub repository: String,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
-    pub commit_hash: Option<String>,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
-    pub lib_name: Option<String>,
-    #[diesel(sql_type = diesel::sql_types::Bool)]
-    pub bpf_flag: bool,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
-    pub base_docker_image: Option<String>,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
-    pub mount_path: Option<String>,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Array<diesel::sql_types::Text>>)]
-    pub cargo_args: Option<Vec<String>>,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
-    pub signer: Option<String>,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
-    pub arch: Option<String>,
-
-    // From program_authority table (nullable since it's a LEFT JOIN)
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Bool>)]
-    pub is_frozen: Option<bool>,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Bool>)]
-    pub is_closed: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -245,26 +133,12 @@ impl VerifiedHash {
     }
 }
 
-/// Represents build logs in the database
+/// Build logs row.
 #[derive(Clone, Debug, Serialize, Deserialize, Insertable, Queryable, AsChangeset)]
 #[diesel(table_name = build_logs, primary_key(id))]
 pub struct BuildLogs {
-    /// Unique identifier
     pub id: String,
-    /// Program address
     pub program_address: String,
-    /// Log file name
     pub file_name: String,
-    /// Log creation timestamp
     pub created_at: NaiveDateTime,
-}
-
-#[derive(QueryableByName)]
-pub struct VerifiedBuildWithSigner {
-    #[diesel(embed)]
-    pub solana_program_build: SolanaProgramBuild,
-    #[diesel(embed)]
-    pub verified_program: Option<VerifiedProgram>,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Bool>)]
-    pub is_frozen: Option<bool>,
 }

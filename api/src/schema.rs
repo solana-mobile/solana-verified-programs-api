@@ -46,21 +46,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    verified_programs (id) {
-        #[max_length = 36]
-        id -> Varchar,
-        #[max_length = 44]
-        program_id -> Varchar,
-        is_verified -> Bool,
-        on_chain_hash -> Varchar,
-        executable_hash -> Varchar,
-        verified_at -> Timestamp,
-        #[max_length = 36]
-        solana_build_id -> Varchar,
-    }
-}
-
-diesel::table! {
     verified_hashes (executable_hash) {
         executable_hash -> Varchar,
         repository -> Varchar,
@@ -76,12 +61,9 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(verified_programs -> solana_program_builds (solana_build_id));
-
 diesel::allow_tables_to_appear_in_same_query!(
     build_logs,
     program_authority,
     solana_program_builds,
-    verified_programs,
     verified_hashes,
 );

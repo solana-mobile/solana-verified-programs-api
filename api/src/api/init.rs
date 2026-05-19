@@ -106,28 +106,10 @@ pub fn initialize_router(db: DbClient) -> Router {
                 .layer(cors(Method::POST))
                 .layer(CompressionLayer::new().zstd(true)),
         )
-        .route("/unverify", post(handle_unverify))
-        .layer(
-            global_rate_limit(100)
-                .layer(rate_limit_per_ip(1, 100))
-                .layer(cors(Method::POST))
-                .layer(CompressionLayer::new().zstd(true)),
-        )
-        .route("/status-all/:address", get(get_verification_status_all))
         .route("/status/:address", get(get_verification_status))
         .route("/resolve-hash/:hash", get(resolve_hash))
         .route("/job/:job_id", get(get_job_status))
         .route("/logs/:build_id", get(get_build_logs))
-        .route("/pda", post(handle_pda_updates_creations))
-        .route("/verified-programs", get(get_verified_programs_list))
-        .route(
-            "/verified-programs/:page",
-            get(get_verified_programs_list_paginated),
-        )
-        .route(
-            "/verified-programs-status",
-            get(get_verified_programs_status),
-        )
         .layer(
             global_rate_limit(10000)
                 .layer(rate_limit_per_ip(1, 100))
@@ -138,7 +120,6 @@ pub fn initialize_router(db: DbClient) -> Router {
         .route("/", get(|| async { landing_page() }))
         .route("/api", get(|| async { index() }))
         .route("/health", get(health_check))
-        .route("/health/background-jobs", get(background_job_status))
         // Apply common middleware
         .layer(trace_layer)
         .with_state(db)

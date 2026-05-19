@@ -8,9 +8,6 @@
 //! - Program verification logic
 //! - RPC client management with key rotation
 
-/// Background job management for periodic tasks
-pub mod background_jobs;
-
 /// Build log management services
 pub mod logging;
 
