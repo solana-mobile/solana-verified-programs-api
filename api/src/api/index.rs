@@ -193,64 +193,6 @@ pub fn index() -> Json<Value> {
                     }
                 },
                 {
-                    "path": "/compute-hash",
-                    "method": "POST",
-                    "description": "Submit a build config and get the expected executable hash. Returns cached hash when known, otherwise kicks off a build (asynchronous).",
-                    "params": {
-                        "repository": {
-                            "type": "string",
-                            "required": true,
-                            "description": "Git repository URL containing the program source code"
-                        },
-                        "commit_hash": {
-                            "type": "string",
-                            "required": false,
-                            "description": "Git commit hash. Required for a deterministic build identity"
-                        },
-                        "lib_name": {
-                            "type": "string",
-                            "required": false,
-                            "description": "Library name for repositories with multiple programs"
-                        },
-                        "bpf_flag": {
-                            "type": "boolean",
-                            "required": false,
-                            "description": "Use cargo build-bpf instead of cargo build-sbf"
-                        },
-                        "base_image": {
-                            "type": "string",
-                            "required": false,
-                            "description": "Custom Docker base image for building"
-                        },
-                        "mount_path": {
-                            "type": "string",
-                            "required": false,
-                            "description": "Custom mount path for repository in build container"
-                        },
-                        "cargo_args": {
-                            "type": "array",
-                            "items": "string",
-                            "required": false,
-                            "description": "Additional cargo build arguments"
-                        },
-                        "arch": {
-                            "type": "string",
-                            "required": false,
-                            "description": "Build for the given target architecture [default: v0]"
-                        },
-                        "program_id": {
-                            "type": "string",
-                            "required": false,
-                            "description": "Required only on cache miss until the build driver no longer needs it. The directory entry it produces is not bound to this program_id."
-                        },
-                        "webhook_url": {
-                            "type": "string",
-                            "required": false,
-                            "description": "Webhook URL to receive verification result/error when job completes"
-                        }
-                    }
-                },
-                {
                     "path": "/status/:address",
                     "method": "GET",
                     "description": "Check program verification status",

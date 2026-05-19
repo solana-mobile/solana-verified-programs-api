@@ -100,7 +100,6 @@ pub fn initialize_router(db: DbClient) -> Router {
             post(process_async_verification_with_signer),
         )
         .route("/verify_sync", post(process_sync_verification))
-        .route("/compute-hash", post(process_compute_hash))
         .layer(
             global_rate_limit(5)
                 .layer(rate_limit_per_ip(30, 1))

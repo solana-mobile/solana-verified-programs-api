@@ -203,8 +203,6 @@ pub enum SuccessResponse {
     Verify(VerifyResponse),
     /// Response for listing all verified programs
     StatusAll(Vec<VerificationResponseWithSigner>),
-    /// Response for `POST /compute-hash`
-    ComputeHash(ComputeHashResponse),
 }
 
 /// Conversion implementations for ApiResponse
@@ -234,12 +232,6 @@ impl From<StatusResponse> for ApiResponse {
 impl From<VerifyResponse> for ApiResponse {
     fn from(value: VerifyResponse) -> Self {
         Self::Success(SuccessResponse::Verify(value))
-    }
-}
-
-impl From<ComputeHashResponse> for ApiResponse {
-    fn from(value: ComputeHashResponse) -> Self {
-        Self::Success(SuccessResponse::ComputeHash(value))
     }
 }
 
@@ -332,20 +324,6 @@ pub struct BuildArgs {
     pub bpf_flag: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arch: Option<String>,
-}
-
-/// Response structure for `POST /compute-hash` when a matching build is already cached.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ComputeHashResponse {
-    /// "cached" if the directory already had this build; "in_progress" if a build was kicked off.
-    pub status: String,
-    /// The executable hash, if the directory had a cached entry.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub executable_hash: Option<String>,
-    /// Job id to poll via `GET /job/:id` when a build was kicked off.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_id: Option<String>,
-    pub message: String,
 }
 
 /// Response structure for list of program statuses

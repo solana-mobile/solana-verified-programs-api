@@ -54,45 +54,6 @@ impl From<OtterBuildParams> for SolanaProgramBuildParams {
     }
 }
 
-/// Parameters for `POST /compute-hash`. Pure build config — no `program_id`,
-/// since the content-addressed directory is keyed only by what determines the bytes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ComputeHashParams {
-    pub repository: String,
-    pub commit_hash: Option<String>,
-    pub lib_name: Option<String>,
-    pub bpf_flag: Option<bool>,
-    pub base_image: Option<String>,
-    pub mount_path: Option<String>,
-    pub cargo_args: Option<Vec<String>>,
-    pub arch: Option<String>,
-    /// Optional program_id to attach for the underlying `solana-verify` build job.
-    /// Required by today's `solana-verify verify-from-repo` driver, but the directory
-    /// entry it produces is content-addressed and is not bound to this program_id.
-    pub program_id: Option<String>,
-    /// Optional webhook URL to POST verification result/error when job completes.
-    pub webhook_url: Option<String>,
-}
-
-impl ComputeHashParams {
-    /// Promote into the legacy build params shape used by the verification driver.
-    /// `program_id` is required by the driver; the caller decides what to pass.
-    pub fn into_build_params(self, program_id: String) -> SolanaProgramBuildParams {
-        SolanaProgramBuildParams {
-            repository: self.repository,
-            program_id,
-            commit_hash: self.commit_hash,
-            lib_name: self.lib_name,
-            bpf_flag: self.bpf_flag,
-            base_image: self.base_image,
-            mount_path: self.mount_path,
-            cargo_args: self.cargo_args,
-            arch: self.arch,
-            webhook_url: self.webhook_url,
-        }
-    }
-}
-
 /// Query params for verified programs list
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct VerifiedProgramsQuery {
