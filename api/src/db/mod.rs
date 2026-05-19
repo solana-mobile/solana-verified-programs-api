@@ -4,6 +4,7 @@
 // Database operation modules
 pub mod authority; // Program authority operations
 pub mod connection; // Database connection management
+pub mod hashes; // Content-addressed verified hash directory
 pub mod job; // Job status and management
 pub mod logs; // Build logs operations
 pub mod models; // Database models and types

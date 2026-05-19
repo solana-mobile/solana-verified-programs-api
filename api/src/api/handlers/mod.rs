@@ -3,6 +3,8 @@
 
 // Verification-related handlers
 pub mod async_verify; // Asynchronous program verification
+pub mod compute_hash; // Content-addressed compute-hash endpoint
+pub mod resolve_hash; // Content-addressed resolve-hash endpoint
 pub mod sync_verify; // Synchronous program verification
 pub mod unverify; // Program unverification
 pub mod verification_status;
@@ -19,10 +21,12 @@ pub mod verified_programs_status; // Status of verified programs // PDA updates/
 // Re-export handlers for easier access
 pub(crate) use async_verify::{process_async_verification, process_async_verification_with_signer};
 use axum::http::HeaderMap;
+pub(crate) use compute_hash::process_compute_hash;
 pub(crate) use health::{background_job_status, health_check};
 pub(crate) use job_status::get_job_status;
 pub(crate) use logs::get_build_logs;
 pub(crate) use pda_worker::handle_pda_updates_creations;
+pub(crate) use resolve_hash::resolve_hash;
 pub(crate) use sync_verify::process_sync_verification;
 pub(crate) use unverify::handle_unverify;
 pub(crate) use verification_status::{get_verification_status, get_verification_status_all};

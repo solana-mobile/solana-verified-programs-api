@@ -667,12 +667,24 @@ impl DbClient {
 
         let build_id = build_params.id;
         let random_file_id = uuid::Uuid::new_v4().to_string();
+        let payload_for_directory = payload.clone();
 
         tokio::spawn(async move {
             match verification::execute_verification(payload, &build_id, &random_file_id).await {
                 Ok(res) => {
                     if let Err(e) = self.insert_or_update_verified_build(&res).await {
                         error!("Failed to insert/update verified build: {:?}", e);
+                    }
+                    // Populate the content-addressed directory.
+                    if !res.executable_hash.is_empty() {
+                        let build = SolanaProgramBuild::from(&payload_for_directory);
+                        let entry = crate::db::models::VerifiedHash::from_build(
+                            &build,
+                            res.executable_hash.clone(),
+                        );
+                        if let Err(e) = self.insert_or_update_verified_hash(&entry).await {
+                            error!("Failed to populate verified_hashes directory: {:?}", e);
+                        }
                     }
                     if let Err(e) = self
                         .update_build_status(&build_id, JobStatus::Completed)

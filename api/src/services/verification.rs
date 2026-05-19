@@ -1,7 +1,7 @@
 use crate::{
     db::models::{
-        JobStatus, SolanaProgramBuildParams, VerificationWebhookPayload, VerifiedProgram,
-        VerifyResponse,
+        JobStatus, SolanaProgramBuild, SolanaProgramBuildParams, VerificationWebhookPayload,
+        VerifiedHash, VerifiedProgram, VerifyResponse,
     },
     db::DbClient,
     errors::ApiError,
@@ -35,12 +35,22 @@ pub async fn process_verification_request(
     let program_id = payload.program_id.clone();
     let uid = build_id.to_string();
 
+    let payload_for_directory = payload.clone();
     match execute_verification(payload, &uid, &random_file_id).await {
         Ok(res) => {
             let insertion_count = db.insert_or_update_verified_build(&res).await?;
             info!("Inserted {} verified builds", insertion_count);
             if let Err(e) = db.update_build_status(&uid, JobStatus::Completed).await {
                 error!("Failed to update build status to completed: {:?}", e);
+            }
+            // Populate the content-addressed directory.
+            // Same `(repo, commit, build_args)` will collide on `executable_hash` and upsert.
+            if !res.executable_hash.is_empty() {
+                let build = SolanaProgramBuild::from(&payload_for_directory);
+                let entry = VerifiedHash::from_build(&build, res.executable_hash.clone());
+                if let Err(e) = db.insert_or_update_verified_hash(&entry).await {
+                    error!("Failed to populate verified_hashes directory: {:?}", e);
+                }
             }
             Ok(res)
         }

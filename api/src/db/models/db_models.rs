@@ -1,4 +1,4 @@
-use crate::schema::{build_logs, solana_program_builds, verified_programs};
+use crate::schema::{build_logs, solana_program_builds, verified_hashes, verified_programs};
 use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -203,6 +203,43 @@ impl From<String> for JobStatus {
             "failed" => JobStatus::Failed,
             "un-used" => JobStatus::Unused,
             _ => panic!("Invalid job status"),
+        }
+    }
+}
+
+/// Content-addressed verified build entry: a row asserts that
+/// (repository, commit_hash, build_args) deterministically produces `executable_hash`.
+#[derive(
+    Clone, Debug, Serialize, Deserialize, Insertable, Identifiable, Queryable, AsChangeset, Selectable,
+)]
+#[diesel(table_name = verified_hashes, primary_key(executable_hash))]
+pub struct VerifiedHash {
+    pub executable_hash: String,
+    pub repository: String,
+    pub commit_hash: Option<String>,
+    pub lib_name: Option<String>,
+    pub base_docker_image: Option<String>,
+    pub mount_path: Option<String>,
+    pub cargo_args: Option<Vec<String>>,
+    pub bpf_flag: bool,
+    pub arch: Option<String>,
+    pub verified_at: NaiveDateTime,
+}
+
+impl VerifiedHash {
+    /// Build a `VerifiedHash` row from a completed program build and its produced hash.
+    pub fn from_build(build: &SolanaProgramBuild, executable_hash: impl Into<String>) -> Self {
+        Self {
+            executable_hash: executable_hash.into(),
+            repository: build.repository.clone(),
+            commit_hash: build.commit_hash.clone(),
+            lib_name: build.lib_name.clone(),
+            base_docker_image: build.base_docker_image.clone(),
+            mount_path: build.mount_path.clone(),
+            cargo_args: build.cargo_args.clone(),
+            bpf_flag: build.bpf_flag,
+            arch: build.arch.clone(),
+            verified_at: Utc::now().naive_utc(),
         }
     }
 }

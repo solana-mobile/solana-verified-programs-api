@@ -100,6 +100,7 @@ pub fn initialize_router(db: DbClient) -> Router {
             post(process_async_verification_with_signer),
         )
         .route("/verify_sync", post(process_sync_verification))
+        .route("/compute-hash", post(process_compute_hash))
         .layer(
             global_rate_limit(5)
                 .layer(rate_limit_per_ip(30, 1))
@@ -115,6 +116,7 @@ pub fn initialize_router(db: DbClient) -> Router {
         )
         .route("/status-all/:address", get(get_verification_status_all))
         .route("/status/:address", get(get_verification_status))
+        .route("/resolve-hash/:hash", get(resolve_hash))
         .route("/job/:job_id", get(get_job_status))
         .route("/logs/:build_id", get(get_build_logs))
         .route("/pda", post(handle_pda_updates_creations))
