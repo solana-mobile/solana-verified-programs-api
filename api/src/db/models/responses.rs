@@ -190,6 +190,10 @@ pub struct VerifyResponse {
     pub request_id: String,
     /// Human-readable status message for the job
     pub message: String,
+    /// The executable hash for this build, when known immediately
+    /// (e.g. directory cache hit). Absent when a build is still in progress.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable_hash: Option<String>,
 }
 
 /// Wrapper for successful responses

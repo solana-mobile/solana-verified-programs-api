@@ -85,22 +85,43 @@ pub async fn process_verification(
     signer: String,
     webhook_url: Option<String>,
 ) -> (StatusCode, Json<ApiResponse>) {
-    // Check for existing verification
+    // Content-addressed fast path: if some other program ever built this exact
+    // `(repository, commit, build_args)`, the directory already has the hash.
+    // Skip the build and return it inline — the caller can compare against
+    // whatever bytes they have (deployed program, buffer, local `.so`).
+    if let Ok(Some(cached)) = db.find_hash_for_build_params(&payload).await {
+        info!(
+            "Directory cache hit for {}: returning hash {} without rebuilding",
+            payload.program_id, cached.executable_hash
+        );
+        return (
+            StatusCode::OK,
+            Json(
+                VerifyResponse {
+                    status: JobStatus::Completed,
+                    request_id: String::new(),
+                    message: "Build already in the directory, returning cached hash".to_string(),
+                    executable_hash: Some(cached.executable_hash),
+                }
+                .into(),
+            ),
+        );
+    }
+
+    // Program-bound duplicate check (same program_id + signer + params).
     if let Some(response) = check_and_handle_duplicates(&payload, signer.clone(), &db).await {
         check_program_closed(&db, &payload.program_id).await;
         return (StatusCode::OK, Json(response.into()));
     }
 
-    // Create build record for the verification
+    // Cache miss: kick off a build. The directory will be populated on completion.
     let verification_uuid = match create_and_insert_build(&db, &payload, &signer).await {
         Ok(uuid) => uuid,
         Err(error_response) => return error_response,
     };
 
-    // Spawn async verification task
     spawn_verification_task(db.clone(), payload, verification_uuid.clone(), webhook_url).await;
 
-    // Return response with request ID
     (
         StatusCode::OK,
         Json(
@@ -108,6 +129,7 @@ pub async fn process_verification(
                 status: JobStatus::InProgress,
                 request_id: verification_uuid,
                 message: "Build verification started".to_string(),
+                executable_hash: None,
             }
             .into(),
         ),

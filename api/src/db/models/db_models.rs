@@ -210,7 +210,8 @@ impl From<String> for JobStatus {
 /// Content-addressed verified build entry: a row asserts that
 /// (repository, commit_hash, build_args) deterministically produces `executable_hash`.
 #[derive(
-    Clone, Debug, Serialize, Deserialize, Insertable, Identifiable, Queryable, AsChangeset, Selectable,
+    Clone, Debug, Serialize, Deserialize, Insertable, Identifiable, Queryable, AsChangeset,
+    Selectable, QueryableByName,
 )]
 #[diesel(table_name = verified_hashes, primary_key(executable_hash))]
 pub struct VerifiedHash {

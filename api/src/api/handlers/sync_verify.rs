@@ -8,7 +8,7 @@ use crate::{
         DbClient,
     },
     services::{
-        build_repository_url,
+        build_repository_url, get_on_chain_hash,
         verification::{check_and_handle_duplicates, process_verification_request},
     },
 };
@@ -56,6 +56,40 @@ async fn process_verification_sync(
     payload: SolanaProgramBuildParams,
     signer: String,
 ) -> (StatusCode, Json<ApiResponse>) {
+    // Content-addressed fast path: if the directory already has this
+    // `(repository, commit, build_args)`, skip the slow build and just
+    // compare the cached hash against the current on-chain bytes.
+    if let Ok(Some(cached)) = db.find_hash_for_build_params(&payload).await {
+        info!(
+            "Directory cache hit for {}: comparing cached hash {} against on-chain",
+            payload.program_id, cached.executable_hash
+        );
+        let on_chain_hash = get_on_chain_hash(&payload.program_id).await.unwrap_or_default();
+        let is_verified = !on_chain_hash.is_empty() && on_chain_hash == cached.executable_hash;
+        let mut build = SolanaProgramBuild::from(&payload);
+        build.signer = Some(signer.clone());
+        return (
+            StatusCode::OK,
+            Json(
+                StatusResponse {
+                    is_verified,
+                    message: if is_verified {
+                        "On chain program verified"
+                    } else {
+                        "On chain program not verified"
+                    }
+                    .to_string(),
+                    on_chain_hash,
+                    executable_hash: cached.executable_hash,
+                    last_verified_at: Some(cached.verified_at),
+                    repo_url: build_repository_url(&build),
+                    commit: payload.commit_hash.clone().unwrap_or_default(),
+                }
+                .into(),
+            ),
+        );
+    }
+
     // Check for existing verification
     if let Some(response) = check_and_handle_duplicates(&payload, signer.clone(), &db).await {
         return (StatusCode::OK, Json(response.into()));

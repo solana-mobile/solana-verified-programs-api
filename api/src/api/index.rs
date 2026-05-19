@@ -95,7 +95,7 @@ pub fn index() -> Json<Value> {
                 {
                     "path": "/verify",
                     "method": "POST",
-                    "description": "Deprecated: use /verify-with-signer. Asynchronously verify a Solana program",
+                    "description": "Submit a build config. If the (repo, commit, build_args) is already in the content-addressed directory, returns the cached executable_hash immediately. Otherwise kicks off an async build; the directory is populated when it completes.",
                     "params": {
                         "repository": {
                             "type": "string",
@@ -153,7 +153,7 @@ pub fn index() -> Json<Value> {
                 {
                     "path": "/verify-with-signer",
                     "method": "POST",
-                    "description": "Preferred endpoint. Asynchronously verify using PDA params for the provided signer, PDA signer should be the program authority",
+                    "description": "Preferred endpoint. Reads build params from the signer's PDA, then behaves like /verify: returns the cached executable_hash if the directory already has this (repo, commit, build_args), or kicks off an async build otherwise.",
                     "params": {
                         "signer": {
                             "type": "string",
@@ -175,7 +175,7 @@ pub fn index() -> Json<Value> {
                 {
                     "path": "/verify_sync",
                     "method": "POST",
-                    "description": "Deprecated: use /verify-with-signer. Synchronously verify a Solana program",
+                    "description": "Synchronous variant of /verify. Fast-paths through the directory on a cache hit; otherwise blocks until the build completes.",
                     "params": {
                         "$ref": "#/endpoints/1/params"
                     }

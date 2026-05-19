@@ -92,6 +92,7 @@ pub async fn check_and_handle_duplicates(
                         status: JobStatus::Completed,
                         request_id: verified_build.solana_build_id,
                         message: "Verification already completed.".to_string(),
+                        executable_hash: Some(verified_build.executable_hash),
                     }),
                     Err(err) => {
                         error!("Failed to get verified build: {:?}", err);
@@ -103,11 +104,13 @@ pub async fn check_and_handle_duplicates(
                 status: JobStatus::InProgress,
                 request_id: response.id,
                 message: "Build verification already in progress".to_string(),
+                executable_hash: None,
             }),
             JobStatus::Unused => Some(VerifyResponse {
                 status: JobStatus::Completed,
                 request_id: response.id,
                 message: "These params were not used. There might be a PDA associated with this program ID.".to_string(),
+                executable_hash: None,
             }),
             JobStatus::Failed => {
                 info!("Previous build failed, initiating new build");
