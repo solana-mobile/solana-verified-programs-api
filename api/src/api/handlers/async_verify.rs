@@ -85,6 +85,30 @@ pub async fn process_verification(
     signer: String,
     webhook_url: Option<String>,
 ) -> (StatusCode, Json<ApiResponse>) {
+    // Content-addressed fast path: if anyone has already built this exact
+    // (repo, commit, build_args), the hash is in the directory. Skip the
+    // build and return the hash inline.
+    if let Ok(Some(cached)) = db.find_hash_for_build_params(&payload).await {
+        info!(
+            "Directory cache hit for {}: returning hash {} without rebuilding",
+            payload.program_id, cached.executable_hash
+        );
+        return (
+            StatusCode::OK,
+            Json(
+                VerifyResponse {
+                    status: JobStatus::Completed,
+                    request_id: String::new(),
+                    message: format!(
+                        "Build already in the directory; cached executable_hash: {}",
+                        cached.executable_hash
+                    ),
+                }
+                .into(),
+            ),
+        );
+    }
+
     // Check for existing verification
     if let Some(response) = check_and_handle_duplicates(&payload, signer.clone(), &db).await {
         check_program_closed(&db, &payload.program_id).await;
