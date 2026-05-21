@@ -309,3 +309,32 @@ pub struct VerifiedProgramsStatusListResponse {
     /// Error message if any
     pub error: Option<String>,
 }
+
+/// Response row for `GET /resolve-hash/:hash` — one signer's claim about
+/// a content-addressed executable hash.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResolveHashResponse {
+    pub executable_hash: String,
+    pub signer: String,
+    pub repository: String,
+    pub commit: Option<String>,
+    pub build_args: BuildArgs,
+    pub verified_at: NaiveDateTime,
+}
+
+/// Structured build args, returned by `/resolve-hash` to give callers
+/// the deterministic build inputs without re-parsing CLI argv.
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct BuildArgs {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lib_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_image: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mount_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cargo_args: Option<Vec<String>>,
+    pub bpf_flag: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arch: Option<String>,
+}

@@ -60,6 +60,24 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    verified_hashes (executable_hash, signer) {
+        executable_hash -> Varchar,
+        #[max_length = 44]
+        signer -> Varchar,
+        repository -> Varchar,
+        commit_hash -> Nullable<Varchar>,
+        lib_name -> Nullable<Varchar>,
+        base_docker_image -> Nullable<Varchar>,
+        mount_path -> Nullable<Varchar>,
+        cargo_args -> Nullable<Array<Text>>,
+        bpf_flag -> Bool,
+        #[max_length = 3]
+        arch -> Nullable<Varchar>,
+        verified_at -> Timestamp,
+    }
+}
+
 diesel::joinable!(verified_programs -> solana_program_builds (solana_build_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
@@ -67,4 +85,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     program_authority,
     solana_program_builds,
     verified_programs,
+    verified_hashes,
 );
