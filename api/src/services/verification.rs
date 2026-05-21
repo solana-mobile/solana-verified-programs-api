@@ -1,7 +1,7 @@
 use crate::{
     db::models::{
-        JobStatus, SolanaProgramBuildParams, VerificationWebhookPayload, VerifiedProgram,
-        VerifyResponse,
+        JobStatus, SolanaProgramBuildParams, VerificationWebhookPayload, VerifiedHash,
+        VerifiedProgram, VerifyResponse, DEFAULT_SIGNER,
     },
     db::DbClient,
     errors::ApiError,
@@ -41,6 +41,22 @@ pub async fn process_verification_request(
             info!("Inserted {} verified builds", insertion_count);
             if let Err(e) = db.update_build_status(&uid, JobStatus::Completed).await {
                 error!("Failed to update build status to completed: {:?}", e);
+            }
+            // Populate the content-addressed directory alongside the legacy
+            // verified_programs write. Signer comes from the build row we
+            // inserted at submission time.
+            if !res.executable_hash.is_empty() {
+                if let Ok(build) = db.get_job(&uid).await {
+                    let signer = build
+                        .signer
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_SIGNER.to_string());
+                    let entry =
+                        VerifiedHash::from_build(&build, res.executable_hash.clone(), signer);
+                    if let Err(e) = db.insert_or_update_verified_hash(&entry).await {
+                        error!("Failed to populate verified_hashes directory: {:?}", e);
+                    }
+                }
             }
             Ok(res)
         }
