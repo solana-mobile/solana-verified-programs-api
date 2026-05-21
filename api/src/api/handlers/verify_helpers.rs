@@ -13,7 +13,8 @@ use crate::{
     validation,
 };
 use axum::{http::StatusCode, Json};
-use tracing::error;
+use tracing::{error, info};
+
 
 /// Result type for verification setup operations
 pub type VerificationSetupResult = Result<VerificationSetup, (StatusCode, Json<ApiResponse>)>;
@@ -24,55 +25,26 @@ pub struct VerificationSetup {
     pub signer: String,
 }
 
-/// Common setup logic for verification endpoints
-///
-/// Handles:
-/// - Getting program authority from on-chain
-/// - Fetching verification parameters from PDA
-/// - Updating program authority in database
+/// Common setup logic for verification endpoints: fetch the on-chain program
+/// authority (hint for picking the PDA signer), then read the Otter verify
+/// PDA to get the canonical build params + signer.
 pub async fn setup_verification(
-    db: &DbClient,
     program_id: &str,
     specific_signer: Option<String>,
 ) -> VerificationSetupResult {
-    // Get program authority from on-chain
-    let (program_authority, is_frozen, is_closed) = match get_program_authority(program_id).await {
-        Ok((authority, frozen, closed)) => (authority, frozen, closed),
+    let program_authority = match get_program_authority(program_id).await {
+        Ok((authority, _frozen, _closed)) => authority,
         Err(e) => {
-            let error_str = e.to_string();
-            if error_str.contains("Program appears to be closed") {
-                // For closed programs, no authority and closed=true
-                (None, false, true)
-            } else {
-                // For other errors, default to no authority and not frozen/closed
-                (None, false, false)
-            }
+            info!("Failed to fetch program authority for {}: {}", program_id, e);
+            None
         }
     };
 
-    // Get verification parameters from on-chain PDA
-    match onchain::get_otter_verify_params(program_id, specific_signer, program_authority.clone())
-        .await
-    {
-        Ok((params, signer)) => {
-            // Update program authority in database
-            if let Err(e) = db
-                .insert_or_update_program_authority(
-                    &params.address,
-                    program_authority.as_deref(),
-                    is_frozen,
-                    Some(is_closed),
-                )
-                .await
-            {
-                error!("Failed to update program authority: {:?}", e);
-            }
-
-            Ok(VerificationSetup {
-                params: SolanaProgramBuildParams::from(params),
-                signer,
-            })
-        }
+    match onchain::get_otter_verify_params(program_id, specific_signer, program_authority).await {
+        Ok((params, signer)) => Ok(VerificationSetup {
+            params: SolanaProgramBuildParams::from(params),
+            signer,
+        }),
         Err(err) => {
             error!(
                 "Unable to find on-chain PDA for program {}: {:?}",

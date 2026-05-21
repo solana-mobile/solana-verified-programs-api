@@ -59,3 +59,11 @@ ORDER BY vp.executable_hash,
          COALESCE(sp.signer, '11111111111111111111111111111111'),
          vp.verified_at DESC
 ON CONFLICT (executable_hash, signer) DO NOTHING;
+
+-- The program-bound verified_programs table is dead weight in the new model.
+DROP TABLE IF EXISTS verified_programs;
+
+-- The program_authority cache table was a fast-lookup for is_frozen / is_closed
+-- consulted by the program-bound check_is_verified chain. In the new model
+-- every read RPCs the authority live; nothing reads this table.
+DROP TABLE IF EXISTS program_authority;

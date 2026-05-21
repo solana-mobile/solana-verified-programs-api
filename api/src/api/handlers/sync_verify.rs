@@ -41,7 +41,7 @@ pub(crate) async fn process_sync_verification(
         payload.program_id
     );
 
-    match setup_verification(&db, &payload.program_id, None).await {
+    match setup_verification(&payload.program_id, None).await {
         Ok(setup) => process_verification_sync(db, setup.params, setup.signer).await,
         Err(error_response) => error_response,
     }

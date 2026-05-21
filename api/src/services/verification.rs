@@ -35,16 +35,13 @@ pub async fn process_verification_request(
     let program_id = payload.program_id.clone();
     let uid = build_id.to_string();
 
-    match execute_verification(payload, &uid, &random_file_id).await {
+    match execute_verification(payload, &random_file_id).await {
         Ok(res) => {
-            let insertion_count = db.insert_or_update_verified_build(&res).await?;
-            info!("Inserted {} verified builds", insertion_count);
             if let Err(e) = db.update_build_status(&uid, JobStatus::Completed).await {
                 error!("Failed to update build status to completed: {:?}", e);
             }
-            // Populate the content-addressed directory alongside the legacy
-            // verified_programs write. Signer comes from the build row we
-            // inserted at submission time.
+            // Populate the content-addressed directory. Signer comes from the
+            // build row we inserted at submission time.
             if !res.executable_hash.is_empty() {
                 if let Ok(build) = db.get_job(&uid).await {
                     let signer = build
@@ -87,7 +84,6 @@ pub async fn process_verification_request(
 /// * `Result<VerifiedProgram>` - Verification result if successful
 pub async fn execute_verification(
     payload: SolanaProgramBuildParams,
-    build_id: &str,
     random_file_id: &str,
 ) -> Result<VerifiedProgram> {
     info!(
@@ -129,7 +125,7 @@ pub async fn execute_verification(
         e
     })?;
 
-    process_verification_output(output, &payload, build_id, random_file_id).await
+    process_verification_output(output, &payload, random_file_id).await
 }
 
 /// Builds the solana-verify command with appropriate arguments
@@ -183,7 +179,6 @@ pub fn build_verify_command(payload: &SolanaProgramBuildParams) -> Result<Comman
 /// # Arguments
 /// * `output` - Output from the verification command
 /// * `payload` - Build parameters for verification
-/// * `build_id` - Unique identifier for this build
 /// * `random_file_id` - Identifier for log files
 ///
 /// # Returns
@@ -191,7 +186,6 @@ pub fn build_verify_command(payload: &SolanaProgramBuildParams) -> Result<Comman
 async fn process_verification_output(
     output: std::process::Output,
     payload: &SolanaProgramBuildParams,
-    build_id: &str,
     random_file_id: &str,
 ) -> Result<VerifiedProgram> {
     let stdout = String::from_utf8(output.stdout).unwrap_or_default();
@@ -216,13 +210,11 @@ async fn process_verification_output(
     );
 
     Ok(VerifiedProgram {
-        id: Uuid::new_v4().to_string(),
         program_id: payload.program_id.clone(),
         is_verified: onchain_hash == build_hash,
         on_chain_hash: onchain_hash,
         executable_hash: build_hash,
         verified_at: chrono::Utc::now().naive_utc(),
-        solana_build_id: build_id.to_string(),
     })
 }
 

@@ -1,4 +1,4 @@
-use crate::schema::{build_logs, solana_program_builds, verified_hashes, verified_programs};
+use crate::schema::{build_logs, solana_program_builds, verified_hashes};
 use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -74,22 +74,12 @@ impl<'a> From<&'a SolanaProgramBuildParams> for SolanaProgramBuild {
     }
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    Insertable,
-    Identifiable,
-    Queryable,
-    AsChangeset,
-    Selectable,
-    QueryableByName,
-)]
-#[diesel(table_name = verified_programs, primary_key(id))]
+/// Result of a single build run, returned by `execute_verification`.
+/// Carries just the bytes needed by the synchronous response and the
+/// webhook payload — no DB persistence; the directory is the source
+/// of truth for "this hash exists".
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifiedProgram {
-    /// Unique identifier
-    pub id: String,
     /// Program ID
     pub program_id: String,
     /// Verification status
@@ -100,8 +90,6 @@ pub struct VerifiedProgram {
     pub executable_hash: String,
     /// Verification timestamp
     pub verified_at: NaiveDateTime,
-    /// Build ID reference
-    pub solana_build_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

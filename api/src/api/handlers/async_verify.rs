@@ -37,7 +37,7 @@ pub(crate) async fn process_async_verification(
         payload.program_id
     );
 
-    match setup_verification(&db, &payload.program_id, None).await {
+    match setup_verification(&payload.program_id, None).await {
         Ok(setup) => {
             process_verification(db, setup.params, setup.signer, payload.webhook_url.clone()).await
         }
@@ -67,7 +67,7 @@ pub(crate) async fn process_async_verification_with_signer(
         payload.program_id, payload.signer
     );
 
-    match setup_verification(&db, &payload.program_id, Some(payload.signer)).await {
+    match setup_verification(&payload.program_id, Some(payload.signer)).await {
         Ok(setup) => {
             process_verification(db, setup.params, setup.signer, payload.webhook_url.clone()).await
         }
