@@ -67,11 +67,3 @@ pub(crate) struct VerificationStatusParams {
     /// Program address to check
     pub address: String,
 }
-
-/// Complete program authority data from database
-#[derive(Debug, Clone)]
-pub struct ProgramAuthorityData {
-    pub authority: Option<String>,
-    pub is_frozen: bool,
-    pub is_closed: bool,
-}

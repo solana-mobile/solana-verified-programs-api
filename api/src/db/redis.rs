@@ -4,18 +4,11 @@ use crate::Result;
 use redis::{AsyncCommands, FromRedisValue, Value};
 use tracing::{error, info};
 
-/// Redis cache expiry times in seconds
-const DEFAULT_CACHE_EXPIRY_SECONDS: u64 = 5 * 60; // 5 minutes for general cache
-pub const PROGRAM_AUTHORITY_CACHE_EXPIRY_SECONDS: u64 = 60 * 60; // 1 hour for program authorities
+/// 1 hour expiry for cached program authority lookups.
+pub const PROGRAM_AUTHORITY_CACHE_EXPIRY_SECONDS: u64 = 60 * 60;
 
 /// DbClient helper functions for Redis cache to set and retrieve cache values
 impl DbClient {
-    /// Sets a value in Redis cache with default expiry
-    pub async fn set_cache(&self, program_address: &str, value: &str) -> Result<()> {
-        self.set_cache_with_expiry(program_address, value, DEFAULT_CACHE_EXPIRY_SECONDS)
-            .await
-    }
-
     /// Sets a value in Redis cache with custom expiry
     pub async fn set_cache_with_expiry(
         &self,
@@ -83,11 +76,11 @@ mod tests {
         let program = "test_program";
         let hash = "test_hash";
 
-        // Test set
-        let set_result = client.set_cache(program, hash).await;
+        let set_result = client
+            .set_cache_with_expiry(program, hash, PROGRAM_AUTHORITY_CACHE_EXPIRY_SECONDS)
+            .await;
         assert!(set_result.is_ok());
 
-        // Test get
         let get_result = client.get_cache(program).await;
         assert!(get_result.is_ok());
         assert_eq!(get_result.unwrap(), hash);

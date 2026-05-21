@@ -19,7 +19,7 @@ pub mod verified_programs_status; // Status of verified programs // PDA updates/
 // Re-export handlers for easier access
 pub(crate) use async_verify::{process_async_verification, process_async_verification_with_signer};
 use axum::http::HeaderMap;
-pub(crate) use health::{background_job_status, health_check};
+pub(crate) use health::health_check;
 pub(crate) use job_status::get_job_status;
 pub(crate) use logs::get_build_logs;
 pub(crate) use pda_worker::handle_pda_updates_creations;
