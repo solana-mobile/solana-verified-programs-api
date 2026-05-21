@@ -16,4 +16,4 @@ pub(crate) use job_status::get_job_status;
 pub(crate) use logs::get_build_logs;
 pub(crate) use resolve_hash::resolve_hash;
 pub(crate) use sync_verify::process_sync_verification;
-pub(crate) use verification_status::get_verification_status;
+pub(crate) use verification_status::{get_verification_status, get_verification_status_all};

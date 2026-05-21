@@ -31,9 +31,12 @@ pub struct BuildResult {
 }
 
 /// Run a build, update job status, and populate the content-addressed directory.
+/// `signer` is the on-chain pubkey whose PDA produced the build params; it's
+/// recorded as the claimant for the resulting directory row.
 pub async fn process_verification_request(
     payload: SolanaProgramBuildParams,
     build_id: &str,
+    signer: &str,
     db: &DbClient,
 ) -> Result<BuildResult> {
     let random_file_id = Uuid::new_v4().to_string();
@@ -47,7 +50,8 @@ pub async fn process_verification_request(
             }
             if !res.executable_hash.is_empty() {
                 let build = SolanaProgramBuild::from(&payload_for_directory);
-                let entry = VerifiedHash::from_build(&build, res.executable_hash.clone());
+                let entry =
+                    VerifiedHash::from_build(&build, res.executable_hash.clone(), signer);
                 if let Err(e) = db.insert_or_update_verified_hash(&entry).await {
                     error!("Failed to populate verified_hashes directory: {:?}", e);
                 }

@@ -1,21 +1,24 @@
-use crate::db::models::{ExtendedStatusResponse, StatusResponse, VerificationStatusParams};
+use crate::db::models::{
+    ApiResponse, ErrorResponse, ExtendedStatusResponse, ResolveHashResponse, Status,
+    StatusResponse, VerificationStatusParams,
+};
 use crate::db::DbClient;
 use crate::services::get_on_chain_hash;
-use crate::services::onchain::get_program_authority;
+use crate::services::onchain::{get_program_authority, program_metadata_retriever::SIGNER_KEYS};
 use crate::validation;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use tracing::{error, info};
 
-/// `GET /status/:address` — thin wrapper over the content-addressed directory.
+/// `GET /status/:address` — thin wrapper over the content-addressed directory,
+/// filtered by trust.
 ///
 ///   1. Fetch the current on-chain program hash via RPC.
-///   2. Look that hash up in `verified_hashes`.
-///   3. Return verified iff the directory has an entry for it.
-///
-/// No `is_verified` flag, no invalidation, no staleness — every call hashes
-/// whatever is currently on-chain.
+///   2. Build the trust set: `{program_upgrade_authority} ∪ SIGNER_KEYS`.
+///   3. Look up directory rows for `(on_chain_hash, signer ∈ trust_set)`.
+///   4. Return verified iff any trusted signer has claimed this hash, with
+///      that signer surfaced in the response.
 pub(crate) async fn get_verification_status(
     State(db): State<DbClient>,
     Path(VerificationStatusParams { address }): Path<VerificationStatusParams>,
@@ -29,9 +32,9 @@ pub(crate) async fn get_verification_status(
 
     info!("Checking verification status for program: {}", address);
 
-    let (is_frozen, is_closed) = match get_program_authority(&address).await {
-        Ok((_, frozen, closed)) => (frozen, closed),
-        Err(_) => (false, false),
+    let (program_authority, is_frozen, is_closed) = match get_program_authority(&address).await {
+        Ok((authority, frozen, closed)) => (authority, frozen, closed),
+        Err(_) => (None, false, false),
     };
 
     if is_closed {
@@ -64,8 +67,13 @@ pub(crate) async fn get_verification_status(
         }
     };
 
-    match db.get_verified_hash(&on_chain_hash).await {
-        Ok(Some(entry)) => {
+    let trust_set = trust_set_for(program_authority.as_deref());
+    match db
+        .get_verified_hashes_trusted(&on_chain_hash, &trust_set)
+        .await
+    {
+        Ok(rows) if !rows.is_empty() => {
+            let entry = rows.into_iter().next().expect("non-empty");
             let commit = entry.commit_hash.clone().unwrap_or_default();
             let repo_url = if commit.is_empty() {
                 entry.repository.clone()
@@ -83,13 +91,14 @@ pub(crate) async fn get_verification_status(
                         repo_url,
                         commit,
                         last_verified_at: Some(entry.verified_at),
+                        signer: Some(entry.signer),
                     },
                     is_frozen,
                     is_closed,
                 }),
             )
         }
-        Ok(None) => (
+        Ok(_) => (
             StatusCode::OK,
             Json(not_verified(
                 "On chain program not verified".to_string(),
@@ -115,6 +124,69 @@ pub(crate) async fn get_verification_status(
     }
 }
 
+/// `GET /status-all/:address` — every trusted signer's claim about the program's
+/// current on-chain hash. Useful when consumers want to see whether multiple
+/// trusted parties (upgrade authority and a whitelisted Otter signer, say) both
+/// attest to the same source.
+pub(crate) async fn get_verification_status_all(
+    State(db): State<DbClient>,
+    Path(VerificationStatusParams { address }): Path<VerificationStatusParams>,
+) -> (StatusCode, Json<ApiResponse>) {
+    if let Err(e) = validation::validate_pubkey(&address) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(
+                ErrorResponse {
+                    status: Status::Error,
+                    error: e,
+                }
+                .into(),
+            ),
+        );
+    }
+
+    let (program_authority, _, _) = get_program_authority(&address).await.unwrap_or((None, false, false));
+
+    let on_chain_hash = match get_on_chain_hash(&address).await {
+        Ok(hash) => hash,
+        Err(_) => {
+            return (
+                StatusCode::OK,
+                Json(ApiResponse::ResolveHashList(vec![])),
+            );
+        }
+    };
+
+    let trust_set = trust_set_for(program_authority.as_deref());
+    match db
+        .get_verified_hashes_trusted(&on_chain_hash, &trust_set)
+        .await
+    {
+        Ok(rows) => {
+            let claims: Vec<ResolveHashResponse> = rows.into_iter().map(Into::into).collect();
+            (StatusCode::OK, Json(ApiResponse::ResolveHashList(claims)))
+        }
+        Err(e) => {
+            error!("status-all directory lookup failed: {:?}", e);
+            (
+                StatusCode::OK,
+                Json(ApiResponse::ResolveHashList(vec![])),
+            )
+        }
+    }
+}
+
+/// Trust ordering: program upgrade authority first, then whitelisted Otter
+/// signers, in the order declared in `SIGNER_KEYS`.
+fn trust_set_for(program_authority: Option<&str>) -> Vec<String> {
+    let mut out = Vec::with_capacity(1 + SIGNER_KEYS.len());
+    if let Some(a) = program_authority {
+        out.push(a.to_string());
+    }
+    out.extend(SIGNER_KEYS.iter().map(|k| k.to_string()));
+    out
+}
+
 fn not_verified(
     message: String,
     on_chain_hash: String,
@@ -131,6 +203,7 @@ fn not_verified(
             repo_url: String::new(),
             commit: String::new(),
             last_verified_at,
+            signer: None,
         },
         is_frozen,
         is_closed,

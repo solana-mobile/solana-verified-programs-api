@@ -46,8 +46,10 @@ diesel::table! {
 }
 
 diesel::table! {
-    verified_hashes (executable_hash) {
+    verified_hashes (executable_hash, signer) {
         executable_hash -> Varchar,
+        #[max_length = 44]
+        signer -> Varchar,
         repository -> Varchar,
         commit_hash -> Nullable<Varchar>,
         lib_name -> Nullable<Varchar>,

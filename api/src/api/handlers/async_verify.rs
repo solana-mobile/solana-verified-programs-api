@@ -5,8 +5,8 @@ use super::verify_helpers::{
 use crate::{
     db::{
         models::{
-            ApiResponse, JobStatus, SolanaProgramBuildParams, SolanaProgramBuildParamsWithSigner,
-            VerifyResponse,
+            ApiResponse, JobStatus, SolanaProgramBuild, SolanaProgramBuildParams,
+            SolanaProgramBuildParamsWithSigner, VerifiedHash, VerifyResponse,
         },
         DbClient,
     },
@@ -82,15 +82,22 @@ pub async fn process_verification(
     signer: String,
     webhook_url: Option<String>,
 ) -> (StatusCode, Json<ApiResponse>) {
-    // Content-addressed fast path: if some other program ever built this exact
-    // `(repository, commit, build_args)`, the directory already has the hash.
-    // Skip the build and return it inline — the caller can compare against
-    // whatever bytes they have (deployed program, buffer, local `.so`).
+    // Content-addressed fast path: if anyone has built this exact
+    // `(repository, commit, build_args)` before, the hash is in the
+    // directory. We can return the hash without rebuilding — and at the same
+    // time record this signer's claim about that hash, so the directory has
+    // this signer's row attributed to them.
     if let Ok(Some(cached)) = db.find_hash_for_build_params(&payload).await {
         info!(
             "Directory cache hit for {}: returning hash {} without rebuilding",
             payload.program_id, cached.executable_hash
         );
+        let build = SolanaProgramBuild::from(&payload);
+        let entry =
+            VerifiedHash::from_build(&build, cached.executable_hash.clone(), signer.clone());
+        if let Err(e) = db.insert_or_update_verified_hash(&entry).await {
+            error!("Failed to record signer claim on cache hit: {:?}", e);
+        }
         return (
             StatusCode::OK,
             Json(
@@ -111,7 +118,14 @@ pub async fn process_verification(
         Err(error_response) => return error_response,
     };
 
-    spawn_verification_task(db.clone(), payload, verification_uuid.clone(), webhook_url).await;
+    spawn_verification_task(
+        db.clone(),
+        payload,
+        verification_uuid.clone(),
+        signer,
+        webhook_url,
+    )
+    .await;
 
     (
         StatusCode::OK,
@@ -132,12 +146,13 @@ async fn spawn_verification_task(
     db: DbClient,
     payload: SolanaProgramBuildParams,
     uuid: String,
+    signer: String,
     webhook_url: Option<String>,
 ) {
     info!("Verification task spawned with UUID: {}", uuid);
     tokio::spawn(async move {
         info!("Spawning verification task with uuid: {}", uuid);
-        let result = process_verification_request(payload, &uuid, &db).await;
+        let result = process_verification_request(payload, &uuid, &signer, &db).await;
         if let Err(e) = &result {
             error!("Verification task failed: {:?}", e);
         }

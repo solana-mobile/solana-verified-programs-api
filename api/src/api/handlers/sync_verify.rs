@@ -4,7 +4,10 @@ use super::verify_helpers::{
 };
 use crate::{
     db::{
-        models::{ApiResponse, SolanaProgramBuild, SolanaProgramBuildParams, StatusResponse},
+        models::{
+            ApiResponse, SolanaProgramBuild, SolanaProgramBuildParams, StatusResponse,
+            VerifiedHash,
+        },
         DbClient,
     },
     services::{
@@ -67,6 +70,12 @@ async fn process_verification_sync(
         let is_verified = !on_chain_hash.is_empty() && on_chain_hash == cached.executable_hash;
         let mut build = SolanaProgramBuild::from(&payload);
         build.signer = Some(signer.clone());
+        // Record this signer's claim about the cached hash.
+        let entry =
+            VerifiedHash::from_build(&build, cached.executable_hash.clone(), signer.clone());
+        if let Err(e) = db.insert_or_update_verified_hash(&entry).await {
+            error!("Failed to record signer claim on cache hit: {:?}", e);
+        }
         return (
             StatusCode::OK,
             Json(
@@ -83,6 +92,7 @@ async fn process_verification_sync(
                     last_verified_at: Some(cached.verified_at),
                     repo_url: build_repository_url(&build),
                     commit: payload.commit_hash.clone().unwrap_or_default(),
+                    signer: Some(signer.clone()),
                 }
                 .into(),
             ),
@@ -96,7 +106,7 @@ async fn process_verification_sync(
     };
 
     // Process verification synchronously
-    match process_verification_request(payload.clone(), &uuid, &db).await {
+    match process_verification_request(payload.clone(), &uuid, &signer, &db).await {
         Ok(res) => {
             info!(
                 "Verification completed for program: {} (verified: {})",
@@ -123,6 +133,7 @@ async fn process_verification_sync(
                             build_repository_url(&build)
                         },
                         commit: payload.commit_hash.clone().unwrap_or_default(),
+                        signer: Some(signer.clone()),
                     }
                     .into(),
                 ),

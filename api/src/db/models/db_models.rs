@@ -95,15 +95,17 @@ impl From<String> for JobStatus {
     }
 }
 
-/// Content-addressed verified build entry: a row asserts that
-/// (repository, commit_hash, build_args) deterministically produces `executable_hash`.
+/// Content-addressed verified-build claim. A row asserts that signer `signer`
+/// claims `(repository, commit_hash, build_args)` deterministically produces
+/// `executable_hash`. Multiple signers may claim the same hash.
 #[derive(
     Clone, Debug, Serialize, Deserialize, Insertable, Identifiable, Queryable, AsChangeset,
     Selectable, QueryableByName,
 )]
-#[diesel(table_name = verified_hashes, primary_key(executable_hash))]
+#[diesel(table_name = verified_hashes, primary_key(executable_hash, signer))]
 pub struct VerifiedHash {
     pub executable_hash: String,
+    pub signer: String,
     pub repository: String,
     pub commit_hash: Option<String>,
     pub lib_name: Option<String>,
@@ -117,9 +119,14 @@ pub struct VerifiedHash {
 
 impl VerifiedHash {
     /// Build a `VerifiedHash` row from a completed program build and its produced hash.
-    pub fn from_build(build: &SolanaProgramBuild, executable_hash: impl Into<String>) -> Self {
+    pub fn from_build(
+        build: &SolanaProgramBuild,
+        executable_hash: impl Into<String>,
+        signer: impl Into<String>,
+    ) -> Self {
         Self {
             executable_hash: executable_hash.into(),
+            signer: signer.into(),
             repository: build.repository.clone(),
             commit_hash: build.commit_hash.clone(),
             lib_name: build.lib_name.clone(),

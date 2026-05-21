@@ -195,7 +195,19 @@ pub fn index() -> Json<Value> {
                 {
                     "path": "/status/:address",
                     "method": "GET",
-                    "description": "Check program verification status",
+                    "description": "Verification status filtered by trust: returns verified=true iff a directory row exists for (on-chain hash, signer ∈ {upgrade authority, whitelisted signers}).",
+                    "params": {
+                        "address": {
+                            "type": "string",
+                            "required": true,
+                            "description": "Mainnet program address to check"
+                        }
+                    }
+                },
+                {
+                    "path": "/status-all/:address",
+                    "method": "GET",
+                    "description": "Every trusted signer's claim about the program's current on-chain hash.",
                     "params": {
                         "address": {
                             "type": "string",

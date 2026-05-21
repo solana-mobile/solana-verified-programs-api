@@ -8,9 +8,8 @@ use diesel_async::RunQueryDsl;
 use tracing::error;
 
 impl DbClient {
-    /// Insert (or upsert) a content-addressed verified build entry.
-    /// A row exists iff `(repository, commit_hash, build_args)` deterministically
-    /// produces `executable_hash`.
+    /// Insert (or upsert) a content-addressed verified-build claim.
+    /// Multiple signers may claim the same `executable_hash`; each is a row.
     pub async fn insert_or_update_verified_hash(&self, entry: &VerifiedHash) -> Result<usize> {
         use crate::schema::verified_hashes::dsl::*;
 
@@ -18,7 +17,7 @@ impl DbClient {
 
         diesel::insert_into(verified_hashes)
             .values(entry)
-            .on_conflict(executable_hash)
+            .on_conflict((executable_hash, signer))
             .do_update()
             .set(entry)
             .execute(conn)
@@ -29,16 +28,14 @@ impl DbClient {
             })
     }
 
-    /// Look up a directory entry that matches the given build configuration.
-    /// Used by the `/verify*` endpoints to fast-path on a cache hit: if some
-    /// `(repository, commit, build_args)` has already produced a hash, skip
-    /// the build and return that hash.
+    /// Look up a directory row that matches a given build configuration, regardless
+    /// of which signer claimed it. Used by `/verify*` to short-circuit a rebuild
+    /// when the bytes for that config are already known.
     pub async fn find_hash_for_build_params(
         &self,
         params: &SolanaProgramBuildParams,
     ) -> Result<Option<VerifiedHash>> {
         let conn = &mut self.get_db_conn().await?;
-        // `IS NOT DISTINCT FROM` is null-safe equality — matches NULL=NULL too.
         sql_query(
             r#"
             SELECT * FROM verified_hashes
@@ -73,32 +70,60 @@ impl DbClient {
         })
     }
 
-    /// Look up a verified build by its executable hash.
-    /// Returns `Ok(None)` when no row matches.
-    pub async fn get_verified_hash(&self, hash: &str) -> Result<Option<VerifiedHash>> {
+    /// All directory rows for a given `executable_hash`. Used by `/status-all`
+    /// and the trust-filtered `/status` lookup.
+    pub async fn get_verified_hashes_by_hash(&self, hash: &str) -> Result<Vec<VerifiedHash>> {
         use crate::schema::verified_hashes::dsl::*;
-
         let conn = &mut self.get_db_conn().await?;
-
-        let row: Option<VerifiedHash> = verified_hashes
+        verified_hashes
             .filter(executable_hash.eq(hash))
-            .first::<VerifiedHash>(conn)
+            .load::<VerifiedHash>(conn)
             .await
-            .optional()
             .map_err(|e| {
-                error!("Failed to fetch verified_hash {}: {}", hash, e);
-                e
-            })?;
-
-        Ok(row)
+                error!("Failed to load verified_hashes for {}: {}", hash, e);
+                e.into()
+            })
     }
 
+    /// Directory rows for `executable_hash` whose signer is in `trust_set`.
+    /// Returned in trust order: caller passes the upgrade authority first, then
+    /// whitelisted signers, and the result is sorted to match that.
+    pub async fn get_verified_hashes_trusted(
+        &self,
+        hash: &str,
+        trust_set: &[String],
+    ) -> Result<Vec<VerifiedHash>> {
+        if trust_set.is_empty() {
+            return Ok(vec![]);
+        }
+        use crate::schema::verified_hashes::dsl::*;
+        let conn = &mut self.get_db_conn().await?;
+        let rows: Vec<VerifiedHash> = verified_hashes
+            .filter(executable_hash.eq(hash))
+            .filter(signer.eq_any(trust_set))
+            .load::<VerifiedHash>(conn)
+            .await
+            .map_err(|e| {
+                error!("Failed to load trusted verified_hashes for {}: {}", hash, e);
+                e
+            })?;
+        // Stable sort by trust_set ordering (preserve caller's preference).
+        let mut sorted = rows;
+        sorted.sort_by_key(|r| {
+            trust_set
+                .iter()
+                .position(|s| s == &r.signer)
+                .unwrap_or(usize::MAX)
+        });
+        Ok(sorted)
+    }
 }
 
 impl From<VerifiedHash> for ResolveHashResponse {
     fn from(v: VerifiedHash) -> Self {
         ResolveHashResponse {
             executable_hash: v.executable_hash,
+            signer: v.signer,
             repository: v.repository,
             commit: v.commit_hash,
             build_args: BuildArgs {
@@ -113,4 +138,3 @@ impl From<VerifiedHash> for ResolveHashResponse {
         }
     }
 }
-

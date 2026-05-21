@@ -46,6 +46,9 @@ pub struct StatusResponse {
     pub repo_url: String,
     pub commit: String,
     pub last_verified_at: Option<NaiveDateTime>,
+    /// Signer whose directory row satisfied the trust filter, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signer: Option<String>,
 }
 
 /// Extends `StatusResponse` with the program-authority flags.
@@ -88,6 +91,8 @@ impl From<StatusResponse> for SuccessResponse {
 pub enum ApiResponse {
     Success(SuccessResponse),
     Error(ErrorResponse),
+    /// List of content-addressed claims (used by `/resolve-hash/:hash` and `/status-all/:address`).
+    ResolveHashList(Vec<ResolveHashResponse>),
 }
 
 impl From<StatusResponse> for ApiResponse {
@@ -118,10 +123,11 @@ pub struct JobVerificationResponse {
     pub repo_url: String,
 }
 
-/// Response for `GET /resolve-hash/:hash`: the build provenance for an executable hash.
+/// Response for `GET /resolve-hash/:hash`: one signer's claim about a hash.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResolveHashResponse {
     pub executable_hash: String,
+    pub signer: String,
     pub repository: String,
     pub commit: Option<String>,
     pub build_args: BuildArgs,
