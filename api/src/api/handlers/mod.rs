@@ -4,7 +4,6 @@
 // Verification-related handlers
 pub mod async_verify; // Asynchronous program verification
 pub mod sync_verify; // Synchronous program verification
-pub mod unverify; // Program unverification
 pub mod verification_status;
 pub mod verify_helpers; // Shared verification utilities // Program verification status
 
@@ -26,7 +25,6 @@ pub(crate) use logs::get_build_logs;
 pub(crate) use pda_worker::handle_pda_updates_creations;
 pub(crate) use resolve_hash::resolve_hash;
 pub(crate) use sync_verify::process_sync_verification;
-pub(crate) use unverify::handle_unverify;
 pub(crate) use verification_status::{get_verification_status, get_verification_status_all};
 pub(crate) use verified_programs_list::{
     get_verified_programs_list, get_verified_programs_list_paginated,

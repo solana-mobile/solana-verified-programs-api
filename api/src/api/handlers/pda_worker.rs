@@ -6,7 +6,7 @@ use crate::{
         models::{parse_helius_transaction, SolanaProgramBuildParams},
         DbClient,
     },
-    services::{get_on_chain_hash, onchain::OtterBuildParams, rpc_manager::get_rpc_manager},
+    services::{onchain::OtterBuildParams, rpc_manager::get_rpc_manager},
 };
 use axum::{
     extract::State,
@@ -18,6 +18,18 @@ use serde_json::Value;
 use solana_sdk::pubkey::Pubkey;
 use tracing::{error, info, warn};
 
+const OTTER_VERIFY_PROGRAM_ID: &str = "verifycLy8mB96wd9wqq3WDXQwM4oU6r42Th37Db9fC";
+
+/// `POST /pda` — Helius webhook listening to PDA creates/updates on the
+/// Otter verify program. For each PDA instruction we fetch the PDA's
+/// build params from chain and kick off a verification.
+///
+/// `process_verification`'s directory cache hit short-circuits when the
+/// same `(repo, commit, build_args)` has already been built, so
+/// duplicate PDA events are cheap.
+///
+/// Backpressure (trust filter on the signer, per-program cooldown) is
+/// follow-up work — see the proposal's open questions.
 pub(crate) async fn handle_pda_updates_creations(
     State(db): State<DbClient>,
     headers: HeaderMap,
@@ -25,85 +37,71 @@ pub(crate) async fn handle_pda_updates_creations(
 ) -> (StatusCode, &'static str) {
     info!("Received PDA updates/creation event");
 
-    // Validate authorization
     if !is_authorized(&headers) {
-        warn!("Unauthorized unverify attempt");
+        warn!("Unauthorized /pda attempt");
         return (
             StatusCode::UNAUTHORIZED,
             "Missing or invalid authorization header",
         );
     }
 
-    // Validate payload
-    let helius_parsed_transaction = match parse_helius_transaction(&payload) {
-        Ok(parsed_transaction) => parsed_transaction,
+    let parsed = match parse_helius_transaction(&payload) {
+        Ok(p) => p,
         Err(status) => return status,
     };
 
-    // Process instructions
-    for ix in helius_parsed_transaction.instructions {
-        // Only process PDA updates/creations
-        if ix.programId != "verifycLy8mB96wd9wqq3WDXQwM4oU6r42Th37Db9fC" {
-            continue;
+    // Spawn so Helius gets its 200 immediately.
+    let db_for_task = db.clone();
+    tokio::spawn(async move {
+        for ix in parsed.instructions {
+            if ix.programId != OTTER_VERIFY_PROGRAM_ID {
+                continue;
+            }
+            if ix.accounts.len() < 3 {
+                continue;
+            }
+            let pda_account = ix.accounts[0].clone();
+            let program_id = ix.accounts[2].clone();
+            if let Err(e) =
+                process_pda_event(&db_for_task, &program_id, &pda_account).await
+            {
+                error!(
+                    "Failed to process PDA event for program {}: {:?}",
+                    program_id, e
+                );
+            }
         }
-        let pda_account = &ix.accounts[0];
-        let program_id = &ix.accounts[2];
-
-        let _ = process_otter_verify_instruction(&db, program_id, pda_account).await;
-    }
+    });
 
     (StatusCode::OK, "PDA updates/creations request received")
 }
 
-async fn process_otter_verify_instruction(
+async fn process_pda_event(
     db: &DbClient,
     program_id: &str,
     pda_account: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let executable_hash = match db.get_verified_build(program_id, None).await {
-        Ok(data) => data.on_chain_hash,
-        Err(_) => String::default(),
-    };
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let pda_pubkey = Pubkey::from_str(pda_account)?;
 
-    let onchain_hash = match get_on_chain_hash(program_id).await {
-        Ok(hash) => hash,
-        Err(e) => {
-            let error_str = e.to_string();
-            if error_str.contains("Program appears to be closed") {
-                // Handle closed program using centralized helper
-                db.handle_closed_program(program_id).await?;
-                return Ok(()); // Exit early for closed programs
-            }
-            return Err(e.into());
-        }
-    };
+    let rpc_manager = get_rpc_manager();
+    let pda_data = rpc_manager
+        .execute_with_retry(|client| async move {
+            client
+                .get_account_data(&pda_pubkey)
+                .await
+                .map_err(|e| crate::errors::ApiError::Custom(format!("RPC error: {e}")))
+        })
+        .await?;
 
-    if onchain_hash != executable_hash {
-        db.unverify_program(program_id, &onchain_hash).await?;
-        // start new build
-        let pda_account_pubkey = Pubkey::from_str(pda_account)?;
-        let rpc_manager = get_rpc_manager();
-        let params = rpc_manager
-            .execute_with_retry(|client| async move {
-                client
-                    .get_account_data(&pda_account_pubkey)
-                    .await
-                    .map_err(|e| crate::errors::ApiError::Custom(format!("RPC error: {e}")))
-            })
-            .await?;
-        let otter_build_params = match OtterBuildParams::try_from_slice(&params[8..]) {
-            Ok(params) => params,
-            Err(e) => {
-                error!("Failed to deserialize PDA data: {}", e);
-                return Err(e.into());
-            }
-        };
-        let signer = otter_build_params.signer.to_string();
-        let solana_build_params = SolanaProgramBuildParams::from(otter_build_params);
-        let _ = process_verification(db.clone(), solana_build_params, signer, None).await;
-        info!("Successfully unverified program {}", program_id);
-    } else {
-        info!("Program {} has not been upgraded", program_id);
-    }
+    // Skip the Anchor 8-byte discriminator.
+    let otter_build_params = OtterBuildParams::try_from_slice(&pda_data[8..])?;
+    let signer = otter_build_params.signer.to_string();
+    let build_params = SolanaProgramBuildParams::from(otter_build_params);
+
+    info!(
+        "PDA event: triggering verification for program {} (signer {})",
+        program_id, signer
+    );
+    let _ = process_verification(db.clone(), build_params, signer, None).await;
     Ok(())
 }
