@@ -1,6 +1,6 @@
 use crate::db::models::{
     ApiResponse, ErrorResponse, ExtendedStatusResponse, Status, StatusResponse, SuccessResponse,
-    VerificationStatusParams, DEFAULT_SIGNER,
+    VerificationResponse, VerificationResponseWithSigner, VerificationStatusParams, DEFAULT_SIGNER,
 };
 use crate::db::DbClient;
 use crate::services::get_on_chain_hash;
@@ -160,16 +160,14 @@ fn not_verified(
     }
 }
 
-/// Handler for retrieving all verification information for a program
+/// `GET /status-all/:address` — every trusted signer's claim for the
+/// program's current on-chain hash. Internally:
 ///
-/// # Endpoint: GET /status-all/:address
-///
-/// # Arguments
-/// * `db` - Database client from application state
-/// * `address` - Program address to get verification information
-///
-/// # Returns
-/// * `(StatusCode, Json<ApiResponse>)` - HTTP status and all verification information
+///   1. RPC-fetch the current on-chain program hash.
+///   2. Look it up in `verified_hashes` filtered by the trust set
+///      `{program upgrade authority} ∪ SIGNER_KEYS ∪ {DEFAULT_SIGNER}`.
+///   3. Render each row in the legacy `VerificationResponseWithSigner` shape
+///      so existing consumers (Solana Explorer, CLI) are unaffected.
 pub(crate) async fn get_verification_status_all(
     State(db): State<DbClient>,
     Path(VerificationStatusParams { address }): Path<VerificationStatusParams>,
@@ -192,12 +190,54 @@ pub(crate) async fn get_verification_status_all(
         address
     );
 
-    match db.get_all_verification_info(address).await {
-        Ok(result) => {
-            info!("Successfully retrieved all verification info");
+    let (program_authority, is_frozen, is_closed) = match get_program_authority(&address).await {
+        Ok((authority, frozen, closed)) => (authority, frozen, closed),
+        Err(_) => (None, false, false),
+    };
+
+    let on_chain_hash = match get_on_chain_hash(&address).await {
+        Ok(hash) => hash,
+        Err(_) => {
+            return (
+                StatusCode::OK,
+                Json(ApiResponse::Success(SuccessResponse::StatusAll(vec![]))),
+            );
+        }
+    };
+
+    let trust_set = trust_set_for(program_authority.as_deref());
+    match db
+        .get_verified_hashes_trusted(&on_chain_hash, &trust_set)
+        .await
+    {
+        Ok(rows) => {
+            let claims: Vec<VerificationResponseWithSigner> = rows
+                .into_iter()
+                .map(|row| {
+                    let commit = row.commit_hash.unwrap_or_default();
+                    let repo_url = if commit.is_empty() {
+                        row.repository
+                    } else {
+                        format!("{}/tree/{}", row.repository.trim_end_matches('/'), commit)
+                    };
+                    VerificationResponseWithSigner {
+                        signer: row.signer,
+                        verification_response: VerificationResponse {
+                            is_verified: true,
+                            on_chain_hash: on_chain_hash.clone(),
+                            executable_hash: row.executable_hash,
+                            repo_url,
+                            commit,
+                            last_verified_at: Some(row.verified_at),
+                            is_frozen,
+                            is_closed,
+                        },
+                    }
+                })
+                .collect();
             (
                 StatusCode::OK,
-                Json(ApiResponse::Success(SuccessResponse::StatusAll(result))),
+                Json(ApiResponse::Success(SuccessResponse::StatusAll(claims))),
             )
         }
         Err(err) => {

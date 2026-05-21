@@ -221,16 +221,6 @@ pub struct BuildLogs {
     pub created_at: NaiveDateTime,
 }
 
-#[derive(QueryableByName)]
-pub struct VerifiedBuildWithSigner {
-    #[diesel(embed)]
-    pub solana_program_build: SolanaProgramBuild,
-    #[diesel(embed)]
-    pub verified_program: Option<VerifiedProgram>,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Bool>)]
-    pub is_frozen: Option<bool>,
-}
-
 /// Content-addressed verified-build claim. A row asserts that `signer`
 /// claims `(repository, commit_hash, build_args)` deterministically produces
 /// `executable_hash`. Multiple signers may claim the same hash.

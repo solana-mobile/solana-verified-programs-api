@@ -81,23 +81,6 @@ impl DbClient {
             })
     }
 
-    /// Get the latest build params for a program by its program address
-    pub async fn get_build_params(&self, program_address: &str) -> Result<SolanaProgramBuild> {
-        use crate::schema::solana_program_builds::dsl::*;
-
-        let conn = &mut self.get_db_conn().await?;
-
-        info!("Fetching build params for program: {}", program_address);
-        solana_program_builds
-            .filter(program_id.eq(program_address))
-            .order(created_at.desc())
-            .first::<SolanaProgramBuild>(conn)
-            .await
-            .map_err(|e| {
-                error!("Failed to get build params: {}", e);
-                ApiError::Diesel(e)
-            })
-    }
 }
 
 #[cfg(test)]
@@ -133,9 +116,5 @@ mod tests {
         // Test insert
         let insert_result = client.insert_build_params(&build).await;
         assert!(insert_result.is_ok());
-
-        // Test retrieve
-        let get_result = client.get_build_params(&build.program_id).await;
-        assert!(get_result.is_ok());
     }
 }

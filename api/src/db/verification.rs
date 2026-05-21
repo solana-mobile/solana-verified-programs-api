@@ -1,8 +1,8 @@
-use super::models::{ProgramAuthorityParams, VerificationResponseWithSigner};
+use super::models::ProgramAuthorityParams;
 use super::DbClient;
 use crate::db::models::{
     JobStatus, SolanaProgramBuild, SolanaProgramBuildParams, VerificationData,
-    VerificationResponse, VerifiedBuildWithSigner, VerifiedProgram, DEFAULT_SIGNER,
+    VerificationResponse, VerifiedProgram, DEFAULT_SIGNER,
 };
 use crate::services::onchain::{get_program_authority, program_metadata_retriever::SIGNER_KEYS};
 use crate::services::{build_repository_url, get_on_chain_hash, onchain, verification};
@@ -42,13 +42,8 @@ impl DbClient {
             .build()
     }
 
-    /// Fetch all verification data in a single optimized query
-    ///
-    /// This function replaces 4 separate database queries with a single JOIN query:
-    /// - get_verified_build() -> verified_programs
-    /// - get_build_params() -> solana_program_builds
-    /// - is_program_frozen() -> program_authority.is_frozen
-    /// - is_program_closed() -> program_authority.is_closed
+    /// Fetch all verification data in a single optimized JOIN query across
+    /// `verified_programs`, `solana_program_builds`, and `program_authority`.
     async fn get_verification_data_optimized(
         &self,
         program_address: &str,
@@ -283,164 +278,6 @@ impl DbClient {
         }
     }
 
-    /// Get all verification info for a program
-    pub async fn get_all_verification_info(
-        self,
-        program_address: String,
-    ) -> Result<Vec<VerificationResponseWithSigner>> {
-        let cache_key = format!("get_all_verification_info:{program_address}");
-
-        // Try fetching from cache
-        if let Ok(cached_str) = self.get_cache(&cache_key).await {
-            if let Ok(cached_data) =
-                serde_json::from_str::<Vec<VerificationResponseWithSigner>>(&cached_str)
-            {
-                info!("Cache hit for all verification info: {}", program_address);
-                return Ok(cached_data);
-            } else {
-                warn!("Cache found for all verification info but failed to deserialize, proceeding...");
-            }
-        }
-
-        let verified_builds = self
-            .get_verified_builds_with_signer(&program_address)
-            .await?;
-
-        // Fetch the current on-chain hash (either from cache or fresh from blockchain)
-        let current_on_chain_hash = match self.get_cache(&program_address).await {
-            Ok(cache_result) => Some(cache_result),
-            Err(_) => {
-                match get_on_chain_hash(&program_address).await {
-                    Ok(on_chain_hash) => {
-                        self.set_cache(&program_address, &on_chain_hash).await.ok();
-                        Some(on_chain_hash)
-                    }
-                    Err(e) => {
-                        let error_str = e.to_string();
-                        if error_str.contains("Program appears to be closed") {
-                            // Handle closed program using centralized helper
-                            self.handle_closed_program(&program_address).await.ok();
-                        }
-                        None
-                    }
-                }
-            }
-        };
-
-        let mut is_verification_needed = false;
-        let mut verification_responses = vec![];
-
-        let mut is_frozen_status_update_needed = false;
-        let mut is_frozen_status_update_data = ProgramAuthorityParams {
-            authority: None,
-            frozen: false,
-            closed: false,
-        };
-
-        // Track if we've already updated the on-chain hash for this program
-        let mut program_on_chain_hash_updated = false;
-
-        // Process each build individually
-        for verified_build_with_signer in verified_builds {
-            let build = verified_build_with_signer.solana_program_build;
-            let verified_build = verified_build_with_signer.verified_program;
-            let mut is_program_frozen;
-
-            if let Some(verified_build) = verified_build {
-                // Check if on-chain hash has changed once per program, not per build
-                // Since we are updating the on-chain hash for all builds of a program at once
-                if let Some(ref fresh_on_chain_hash) = current_on_chain_hash {
-                    if !program_on_chain_hash_updated {
-                        let stored_on_chain_hash = &verified_build.on_chain_hash;
-                        if fresh_on_chain_hash != stored_on_chain_hash {
-                            info!(
-                                "On-chain hash changed from {} to {}. Updating all builds for program.",
-                                stored_on_chain_hash, fresh_on_chain_hash
-                            );
-                            self.update_program_onchain_hash(&program_address, fresh_on_chain_hash)
-                                .await?;
-                            program_on_chain_hash_updated = true;
-                            is_verification_needed = true;
-                        }
-                    }
-                }
-
-                // Determine if this specific build is currently verified
-                let build_is_currently_verified =
-                    if let Some(ref fresh_on_chain_hash) = current_on_chain_hash {
-                        // Build is verified if current on-chain hash matches this build's executable hash
-                        *fresh_on_chain_hash == verified_build.executable_hash
-                    } else {
-                        // No current on-chain hash available, compare stored hashes
-                        verified_build.executable_hash == verified_build.on_chain_hash
-                    };
-
-                is_program_frozen = verified_build_with_signer.is_frozen.unwrap_or_default();
-
-                if !is_program_frozen {
-                    let (current_authority, current_frozen_status, _current_closed_status) =
-                        get_program_authority(&program_address)
-                            .await
-                            .unwrap_or((None, false, false));
-
-                    if current_frozen_status != is_program_frozen {
-                        is_frozen_status_update_needed = true;
-                        is_frozen_status_update_data.authority = current_authority;
-                        is_frozen_status_update_data.frozen = current_frozen_status;
-                    }
-
-                    is_program_frozen = current_frozen_status;
-                }
-
-                // Use the fresh on-chain hash if available, otherwise use stored value
-                let response_on_chain_hash = current_on_chain_hash
-                    .as_ref()
-                    .unwrap_or(&verified_build.on_chain_hash)
-                    .clone();
-
-                verification_responses.push(VerificationResponseWithSigner {
-                    verification_response: VerificationResponse {
-                        is_verified: build_is_currently_verified,
-                        on_chain_hash: response_on_chain_hash,
-                        executable_hash: verified_build.executable_hash,
-                        repo_url: build_repository_url(&build),
-                        last_verified_at: Some(verified_build.verified_at),
-                        commit: build.commit_hash.unwrap_or_default(),
-                        is_frozen: is_program_frozen,
-                        is_closed: false, // Default to false for existing verified programs
-                    },
-                    signer: build.signer.unwrap_or(DEFAULT_SIGNER.to_string()),
-                });
-            }
-        }
-
-        if is_frozen_status_update_needed {
-            let program_id_pubkey = Pubkey::from_str(&program_address)?;
-            self.insert_or_update_program_authority(
-                &program_id_pubkey,
-                is_frozen_status_update_data.authority.as_deref(),
-                is_frozen_status_update_data.frozen,
-                Some(is_frozen_status_update_data.closed),
-            )
-            .await?;
-        }
-
-        if is_verification_needed {
-            let params = self.get_build_params(&program_address).await?;
-            let db_client = self.clone();
-            tokio::spawn(async move {
-                let _ = db_client.reverify_program(params).await;
-            });
-        }
-
-        // Cache the result
-        if let Ok(serialized) = serde_json::to_string(&verification_responses) {
-            self.set_cache(&cache_key, &serialized).await.ok();
-        }
-
-        Ok(verification_responses)
-    }
-
     /// Get the verification status for a program
     ///
     /// Returns a VerifiedProgram struct
@@ -512,45 +349,6 @@ impl DbClient {
                     })
             }
         }
-    }
-
-    pub async fn get_verified_builds_with_signer(
-        &self,
-        program_address: &str,
-    ) -> Result<Vec<VerifiedBuildWithSigner>> {
-        let conn = &mut self.get_db_conn().await?;
-        sql_query(
-            r#"
-            SELECT
-                *
-            FROM
-                (
-                    SELECT
-                        *,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY
-                                COALESCE(sp.signer, '11111111111111111111111111111111')
-                            ORDER BY
-                                vp.verified_at DESC
-                        ) AS rn
-                    FROM
-                        verified_programs vp
-                        LEFT JOIN solana_program_builds sp ON sp.id = vp.solana_build_id
-                        LEFT JOIN program_authority pa ON pa.program_id = $1
-                    WHERE
-                        vp.program_id = $1 AND vp.is_verified = true
-                ) subquery
-            WHERE
-                rn = 1
-        "#,
-        )
-        .bind::<diesel::sql_types::Text, _>(program_address)
-        .load::<VerifiedBuildWithSigner>(conn)
-        .await
-        .map_err(|e| {
-            error!("Failed to get verified builds with signer: {}", e);
-            e.into()
-        })
     }
 
     /// Insert or update a verified program
