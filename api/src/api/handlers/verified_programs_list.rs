@@ -1,6 +1,6 @@
 use crate::db::{
+    hashes::PER_PAGE,
     models::{PaginationMeta, VerifiedProgramListResponse, VerifiedProgramsQuery},
-    programs::PER_PAGE,
     DbClient,
 };
 use crate::validation;
@@ -63,7 +63,7 @@ pub(crate) async fn get_verified_programs_list_paginated(
         }
     }
 
-    let (verified_programs, total) = match db.get_verified_program_ids_page(page, search).await {
+    let (verified_programs, total) = match db.list_verified_program_ids(page, search).await {
         Ok(result) => result,
         Err(err) => {
             error!("Failed to fetch verified programs: {}", err);

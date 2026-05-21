@@ -5,9 +5,25 @@ use crate::db::models::{
 use crate::Result;
 use diesel::{
     expression_methods::ExpressionMethods, query_dsl::QueryDsl, sql_query, OptionalExtension,
+    QueryableByName,
 };
 use diesel_async::RunQueryDsl;
 use tracing::error;
+
+/// Page size for the paginated `/verified-programs/:page` view over the directory.
+pub const PER_PAGE: i64 = 20;
+
+#[derive(QueryableByName)]
+struct CountRow {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    count: i64,
+}
+
+#[derive(QueryableByName)]
+struct ProgramIdRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    program_id: String,
+}
 
 /// DbClient helper functions for the content-addressed `verified_hashes` directory.
 impl DbClient {
@@ -70,6 +86,116 @@ impl DbClient {
             error!("Failed to query verified_hashes by build params: {}", e);
             e.into()
         })
+    }
+
+    /// Paginated list of distinct program ids that have at least one
+    /// completed build whose params join a row in the directory. Optional
+    /// `search` term filters by `program_id` or `repository` (ILIKE).
+    /// Returns `(page_ids, total_count)`.
+    pub async fn list_verified_program_ids(
+        &self,
+        page: i64,
+        search: Option<&str>,
+    ) -> Result<(Vec<String>, i64)> {
+        let conn = &mut self.get_db_conn().await?;
+        let offset = (page.max(1) - 1) * PER_PAGE;
+        let search = search.map(str::trim).filter(|s| !s.is_empty()).unwrap_or("");
+        let pattern = format!("%{}%", search);
+
+        let total: i64 = sql_query(
+            r#"
+            SELECT COUNT(*)::bigint AS count FROM (
+                SELECT DISTINCT sp.program_id
+                FROM solana_program_builds sp
+                WHERE sp.status = 'completed'
+                  AND ($1 = '' OR sp.program_id ILIKE $2 OR sp.repository ILIKE $2)
+                  AND EXISTS (
+                    SELECT 1 FROM verified_hashes vh
+                    WHERE vh.repository                  = sp.repository
+                      AND vh.commit_hash       IS NOT DISTINCT FROM sp.commit_hash
+                      AND vh.lib_name          IS NOT DISTINCT FROM sp.lib_name
+                      AND vh.base_docker_image IS NOT DISTINCT FROM sp.base_docker_image
+                      AND vh.mount_path        IS NOT DISTINCT FROM sp.mount_path
+                      AND vh.cargo_args        IS NOT DISTINCT FROM sp.cargo_args
+                      AND vh.bpf_flag                       = sp.bpf_flag
+                      AND vh.arch              IS NOT DISTINCT FROM sp.arch
+                  )
+            ) t
+            "#,
+        )
+        .bind::<diesel::sql_types::Text, _>(search)
+        .bind::<diesel::sql_types::Text, _>(&pattern)
+        .get_result::<CountRow>(conn)
+        .await
+        .map(|r| r.count)
+        .unwrap_or(0);
+
+        let rows: Vec<ProgramIdRow> = sql_query(
+            r#"
+            SELECT DISTINCT sp.program_id
+            FROM solana_program_builds sp
+            WHERE sp.status = 'completed'
+              AND ($1 = '' OR sp.program_id ILIKE $2 OR sp.repository ILIKE $2)
+              AND EXISTS (
+                SELECT 1 FROM verified_hashes vh
+                WHERE vh.repository                  = sp.repository
+                  AND vh.commit_hash       IS NOT DISTINCT FROM sp.commit_hash
+                  AND vh.lib_name          IS NOT DISTINCT FROM sp.lib_name
+                  AND vh.base_docker_image IS NOT DISTINCT FROM sp.base_docker_image
+                  AND vh.mount_path        IS NOT DISTINCT FROM sp.mount_path
+                  AND vh.cargo_args        IS NOT DISTINCT FROM sp.cargo_args
+                  AND vh.bpf_flag                       = sp.bpf_flag
+                  AND vh.arch              IS NOT DISTINCT FROM sp.arch
+              )
+            ORDER BY sp.program_id
+            LIMIT $3 OFFSET $4
+            "#,
+        )
+        .bind::<diesel::sql_types::Text, _>(search)
+        .bind::<diesel::sql_types::Text, _>(&pattern)
+        .bind::<diesel::sql_types::BigInt, _>(PER_PAGE)
+        .bind::<diesel::sql_types::BigInt, _>(offset)
+        .load(conn)
+        .await
+        .map_err(|e| {
+            error!("Failed to load verified program ids: {}", e);
+            e
+        })?;
+
+        Ok((rows.into_iter().map(|r| r.program_id).collect(), total))
+    }
+
+    /// Every program id with at least one completed build that joins a
+    /// directory row. Used by `/verified-programs-status` (which iterates
+    /// per-program). No pagination.
+    pub async fn all_verified_program_ids(&self) -> Result<Vec<String>> {
+        let conn = &mut self.get_db_conn().await?;
+        let rows: Vec<ProgramIdRow> = sql_query(
+            r#"
+            SELECT DISTINCT sp.program_id
+            FROM solana_program_builds sp
+            WHERE sp.status = 'completed'
+              AND EXISTS (
+                SELECT 1 FROM verified_hashes vh
+                WHERE vh.repository                  = sp.repository
+                  AND vh.commit_hash       IS NOT DISTINCT FROM sp.commit_hash
+                  AND vh.lib_name          IS NOT DISTINCT FROM sp.lib_name
+                  AND vh.base_docker_image IS NOT DISTINCT FROM sp.base_docker_image
+                  AND vh.mount_path        IS NOT DISTINCT FROM sp.mount_path
+                  AND vh.cargo_args        IS NOT DISTINCT FROM sp.cargo_args
+                  AND vh.bpf_flag                       = sp.bpf_flag
+                  AND vh.arch              IS NOT DISTINCT FROM sp.arch
+              )
+            ORDER BY sp.program_id
+            "#,
+        )
+        .load(conn)
+        .await
+        .map_err(|e| {
+            error!("Failed to load all verified program ids: {}", e);
+            e
+        })?;
+        Ok(rows.into_iter().map(|r| r.program_id).collect())
     }
 
     /// All directory rows for a given `executable_hash`. Used by `/resolve-hash`.
