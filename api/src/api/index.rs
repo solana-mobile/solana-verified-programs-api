@@ -181,18 +181,6 @@ pub fn index() -> Json<Value> {
                     }
                 },
                 {
-                    "path": "/resolve-hash/:hash",
-                    "method": "GET",
-                    "description": "Resolve a content-addressed executable hash to the build provenance that produces it",
-                    "params": {
-                        "hash": {
-                            "type": "string",
-                            "required": true,
-                            "description": "Hex-encoded executable hash (64 chars)"
-                        }
-                    }
-                },
-                {
                     "path": "/status/:address",
                     "method": "GET",
                     "description": "Verification status filtered by trust: returns verified=true iff a directory row exists for (on-chain hash, signer ∈ {upgrade authority, whitelisted signers}).",
@@ -205,14 +193,14 @@ pub fn index() -> Json<Value> {
                     }
                 },
                 {
-                    "path": "/status-all/:address",
+                    "path": "/status-all/:id",
                     "method": "GET",
-                    "description": "Every trusted signer's claim about the program's current on-chain hash.",
+                    "description": "List every claim about a build. `:id` is polymorphic: a 64-char hex executable hash returns every signer's claim for that hash (no trust filter); a base58 pubkey is treated as a program id and returns every trusted signer's claim for the program's current on-chain hash.",
                     "params": {
-                        "address": {
+                        "id": {
                             "type": "string",
                             "required": true,
-                            "description": "Mainnet program address to check"
+                            "description": "Either a 64-character hex executable hash or a base58 program id"
                         }
                     }
                 },

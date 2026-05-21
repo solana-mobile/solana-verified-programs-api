@@ -19,16 +19,16 @@ table, the reverify cycle, the background refresh job. ~3000 lines.
 
 ## Endpoints
 
-- **`GET /resolve-hash/:hash`** — every signer's claim about a hash:
-  `[ { signer, repo, commit, build_args, verified_at } ]`. Empty list if
-  no one has claimed it. Trust filtering is the consumer's job.
-- **`GET /status/:program_id`** — trust-filtered: fetch the on-chain hash,
-  return verified=true iff a directory row exists with that hash and a
-  signer in `{ program upgrade authority } ∪ SIGNER_KEYS` (the whitelisted
-  Otter signers). Response surfaces *which* signer satisfied the filter.
-- **`GET /status-all/:program_id`** — same lookup, all trusted claimants
-  returned as a list. For consumers that want to see e.g. that both the
-  upgrade authority and an Otter signer attest to the same source.
+- **`GET /status/:program_id`** — trust-filtered single answer: fetch the
+  on-chain hash, return verified=true iff a directory row exists with that
+  hash and a signer in `{ program upgrade authority } ∪ SIGNER_KEYS` (the
+  whitelisted Otter signers). Response surfaces which signer satisfied the
+  filter.
+- **`GET /status-all/:id`** — polymorphic list lookup.
+  - If `:id` is a 64-char hex hash: every signer's claim for that hash
+    (caller decides whose claim to trust).
+  - If `:id` is a base58 pubkey: every trusted signer's claim for the
+    program's current on-chain hash.
 - **`POST /verify`, `/verify-with-signer`** — submit a build config. Cache
   hit on `(repo, commit, build_args)` returns the hash immediately and
   records this signer's claim about it; cache miss queues a build whose
@@ -37,13 +37,13 @@ table, the reverify cycle, the background refresh job. ~3000 lines.
 ## Why
 
 - **No staleness.** Upgrades either match a known hash or don't. Always live.
-- **Buffer verification falls out for free.** Same primitive.
+- **Buffer verification falls out for free.** Same primitive (look up the
+  hash through `/status-all`).
 - **Stronger trust model.** Consumer hashes the bytes themselves; the API
   attributes the (hash ↔ build) claim to a specific signer; `/status`
   refuses to count claims from outside the trust set.
 - **PDA stops doing double duty.** Just the deployer's on-chain claim,
-  not also the build trigger. Multiple signers may claim a program; the
-  API picks among them by trust order.
+  not also the build trigger.
 
 ## Open Questions
 

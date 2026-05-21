@@ -5,7 +5,7 @@ use crate::db::models::{
 use crate::db::DbClient;
 use crate::services::get_on_chain_hash;
 use crate::services::onchain::{get_program_authority, program_metadata_retriever::SIGNER_KEYS};
-use crate::validation;
+use crate::validation::{self, validate_executable_hash};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
@@ -124,37 +124,54 @@ pub(crate) async fn get_verification_status(
     }
 }
 
-/// `GET /status-all/:address` — every trusted signer's claim about the program's
-/// current on-chain hash. Useful when consumers want to see whether multiple
-/// trusted parties (upgrade authority and a whitelisted Otter signer, say) both
-/// attest to the same source.
+/// `GET /status-all/:id` — list every claim about a build.
+///
+/// `:id` is polymorphic by shape:
+///
+/// - **64-character hex** (an executable hash): returns every signer's claim
+///   about that hash, trust filter not applied (the caller chose to look up
+///   bytes, so they decide whose claim to weigh).
+/// - **base58 pubkey** (a program id): fetches the program's current on-chain
+///   hash and returns every *trusted* signer's claim for it (trust set =
+///   `{upgrade authority} ∪ SIGNER_KEYS`).
 pub(crate) async fn get_verification_status_all(
     State(db): State<DbClient>,
-    Path(VerificationStatusParams { address }): Path<VerificationStatusParams>,
+    Path(VerificationStatusParams { address: id }): Path<VerificationStatusParams>,
 ) -> (StatusCode, Json<ApiResponse>) {
-    if let Err(e) = validation::validate_pubkey(&address) {
+    // Hash form: hex 64 chars.
+    if validate_executable_hash(&id).is_ok() {
+        info!("status-all: hash lookup for {}", id);
+        return match db.get_verified_hashes_by_hash(&id).await {
+            Ok(rows) => {
+                let claims: Vec<ResolveHashResponse> = rows.into_iter().map(Into::into).collect();
+                (StatusCode::OK, Json(ApiResponse::ResolveHashList(claims)))
+            }
+            Err(e) => {
+                error!("status-all hash lookup failed: {:?}", e);
+                (StatusCode::OK, Json(ApiResponse::ResolveHashList(vec![])))
+            }
+        };
+    }
+
+    // Pubkey form: program id, trust-filtered against the on-chain hash.
+    if let Err(e) = validation::validate_pubkey(&id) {
         return (
             StatusCode::BAD_REQUEST,
             Json(
                 ErrorResponse {
                     status: Status::Error,
-                    error: e,
+                    error: format!("Path param must be a 64-char hex hash or a base58 pubkey: {e}"),
                 }
                 .into(),
             ),
         );
     }
 
-    let (program_authority, _, _) = get_program_authority(&address).await.unwrap_or((None, false, false));
-
-    let on_chain_hash = match get_on_chain_hash(&address).await {
+    info!("status-all: program lookup for {}", id);
+    let (program_authority, _, _) = get_program_authority(&id).await.unwrap_or((None, false, false));
+    let on_chain_hash = match get_on_chain_hash(&id).await {
         Ok(hash) => hash,
-        Err(_) => {
-            return (
-                StatusCode::OK,
-                Json(ApiResponse::ResolveHashList(vec![])),
-            );
-        }
+        Err(_) => return (StatusCode::OK, Json(ApiResponse::ResolveHashList(vec![]))),
     };
 
     let trust_set = trust_set_for(program_authority.as_deref());
@@ -167,11 +184,8 @@ pub(crate) async fn get_verification_status_all(
             (StatusCode::OK, Json(ApiResponse::ResolveHashList(claims)))
         }
         Err(e) => {
-            error!("status-all directory lookup failed: {:?}", e);
-            (
-                StatusCode::OK,
-                Json(ApiResponse::ResolveHashList(vec![])),
-            )
+            error!("status-all program lookup failed: {:?}", e);
+            (StatusCode::OK, Json(ApiResponse::ResolveHashList(vec![])))
         }
     }
 }
