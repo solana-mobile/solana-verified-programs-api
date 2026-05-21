@@ -1,7 +1,7 @@
 use crate::{
     db::models::{
         JobStatus, SolanaProgramBuildParams, VerificationWebhookPayload, VerifiedHash,
-        VerifiedProgram, VerifyResponse, DEFAULT_SIGNER,
+        VerifiedProgram, DEFAULT_SIGNER,
     },
     db::DbClient,
     errors::ApiError,
@@ -73,54 +73,6 @@ pub async fn process_verification_request(
             error!("Build verification failed: {:?}", err);
             Err(err)
         }
-    }
-}
-
-/// Checks for duplicate verification requests
-///
-/// # Arguments
-/// * `payload` - Build parameters to check
-/// * `signer` - Signer of the verification request
-/// * `db` - Database client for checking status
-///
-/// # Returns
-/// * `Option<VerifyResponse>` - Response if duplicate found
-pub async fn check_and_handle_duplicates(
-    payload: &SolanaProgramBuildParams,
-    signer: String,
-    db: &DbClient,
-) -> Option<VerifyResponse> {
-    match db.check_for_duplicate(payload, signer).await {
-        Ok(response) => match response.status.into() {
-            JobStatus::Completed => {
-                match db.get_verified_build(&response.program_id, response.signer).await {
-                    Ok(verified_build) => Some(VerifyResponse {
-                        status: JobStatus::Completed,
-                        request_id: verified_build.solana_build_id,
-                        message: "Verification already completed.".to_string(),
-                    }),
-                    Err(err) => {
-                        error!("Failed to get verified build: {:?}", err);
-                        None
-                    }
-                }
-            }
-            JobStatus::InProgress => Some(VerifyResponse {
-                status: JobStatus::InProgress,
-                request_id: response.id,
-                message: "Build verification already in progress".to_string(),
-            }),
-            JobStatus::Unused => Some(VerifyResponse {
-                status: JobStatus::Completed,
-                request_id: response.id,
-                message: "These params were not used. There might be a PDA associated with this program ID.".to_string(),
-            }),
-            JobStatus::Failed => {
-                info!("Previous build failed, initiating new build");
-                None
-            }
-        },
-        Err(_) => None,
     }
 }
 

@@ -7,10 +7,7 @@ use crate::{
         models::{ApiResponse, SolanaProgramBuild, SolanaProgramBuildParams, StatusResponse},
         DbClient,
     },
-    services::{
-        build_repository_url,
-        verification::{check_and_handle_duplicates, process_verification_request},
-    },
+    services::{build_repository_url, verification::process_verification_request},
 };
 use axum::{extract::State, http::StatusCode, Json};
 use tracing::{error, info};
@@ -56,11 +53,6 @@ async fn process_verification_sync(
     payload: SolanaProgramBuildParams,
     signer: String,
 ) -> (StatusCode, Json<ApiResponse>) {
-    // Check for existing verification
-    if let Some(response) = check_and_handle_duplicates(&payload, signer.clone(), &db).await {
-        return (StatusCode::OK, Json(response.into()));
-    }
-
     // Create and insert build parameters
     let uuid = match create_and_insert_build(&db, &payload, &signer).await {
         Ok(uuid) => uuid,

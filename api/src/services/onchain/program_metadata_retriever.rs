@@ -4,7 +4,6 @@ use crate::{errors::ApiError, services::rpc_manager::get_rpc_manager, Result};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk_ids::bpf_loader_upgradeable;
 
 /// Program ID for the Otter Verify program
 pub const OTTER_VERIFY_PROGRAMID: Pubkey =
@@ -190,43 +189,6 @@ async fn get_otter_verify_params_with_client(
     ))
 }
 
-/// Returns `false` if program buffer account exists
-/// Returns `true` only if the buffer account is missing (AccountNotFound)
-pub async fn is_program_buffer_missing(program_id: &str) -> bool {
-    let program_id_pubkey = match Pubkey::from_str(program_id) {
-        Ok(pubkey) => pubkey,
-        Err(_) => return false,
-    };
-
-    let rpc_manager = get_rpc_manager();
-    let result = rpc_manager
-        .execute_with_retry(|client| async move {
-            is_program_buffer_missing_with_client(client, &program_id_pubkey).await
-        })
-        .await;
-
-    result.unwrap_or(false)
-}
-
-async fn is_program_buffer_missing_with_client(
-    client: Arc<RpcClient>,
-    program_id_pubkey: &Pubkey,
-) -> Result<bool> {
-    let program_buffer =
-        Pubkey::find_program_address(&[program_id_pubkey.as_ref()], &bpf_loader_upgradeable::id())
-            .0;
-
-    match client.get_account(&program_buffer).await {
-        Ok(_) => Ok(false), // Account exists
-        Err(err) => {
-            if err.to_string().contains("AccountNotFound") {
-                Ok(true)
-            } else {
-                Ok(false) // Ignore other errors and continue
-            }
-        }
-    }
-}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,10 +225,4 @@ mod tests {
         assert!(build_params.bpf_flag.unwrap());
     }
 
-    #[tokio::test]
-    async fn test_program_buffer_missing() {
-        let program_id = "2gFsaXeN9jngaKbQvZsLwxqfUrT2n4WRMraMpeL8NwZM";
-        let result = is_program_buffer_missing(program_id).await;
-        assert!(result);
-    }
 }
