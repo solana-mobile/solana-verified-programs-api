@@ -19,33 +19,20 @@ use tracing::{error, info, warn};
 
 const UPGRADE_INSTRUCTION_DATA: &str = "5Sxr3";
 
+/// Subset of Helius's parsed-transaction payload we actually look at. Extra
+/// fields in the JSON (fee, signature, tokenTransfers, …) are ignored by
+/// serde's default behaviour.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code, non_snake_case)]
 pub struct HeliusParsedTransaction {
-    pub description: String,
-    #[serde(rename = "type")]
-    pub instruction_type: String,
-    pub source: String,
-    pub fee: u64,
-    pub feePayer: String,
-    pub signature: String,
-    pub slot: u64,
-    pub timestamp: u64,
-    pub tokenTransfers: Vec<Value>,
-    pub nativeTransfers: Vec<Value>,
-    pub accountData: Vec<Value>,
-    pub transactionError: Option<String>,
     pub instructions: Vec<Instruction>,
-    pub events: Value,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code, non_snake_case)]
+#[serde(rename_all = "camelCase")]
 pub struct Instruction {
     pub accounts: Vec<String>,
     pub data: String,
-    pub programId: String,
-    pub innerInstructions: Vec<Value>,
+    pub program_id: String,
 }
 
 fn parse_helius(payload: &[Value]) -> Result<HeliusParsedTransaction, (StatusCode, &'static str)> {
@@ -115,7 +102,7 @@ pub async fn pda(
     let otter_id = OTTER_VERIFY_PROGRAM_ID.to_string();
     tokio::spawn(async move {
         for ix in tx.instructions {
-            if ix.programId != otter_id {
+            if ix.program_id != otter_id {
                 continue;
             }
             if ix.accounts.len() < 3 {

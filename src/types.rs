@@ -85,17 +85,6 @@ impl<'de> Deserialize<'de> for Signer {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepositoryUrl(String);
 
-#[allow(dead_code)]
-impl RepositoryUrl {
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
 impl FromStr for RepositoryUrl {
     type Err = String;
 

@@ -4,7 +4,7 @@ use crate::{
     error::Result,
     onchain::build_repo_url,
     response::{StatusResponse, VerifyResponse},
-    types::{ProgramId, RepositoryUrl, Signer, WebhookUrl},
+    types::{ProgramId, Signer, WebhookUrl},
 };
 use axum::{extract::State, http::StatusCode, Json};
 use chrono::Utc;
@@ -12,31 +12,17 @@ use serde::Deserialize;
 use serde_json::Value;
 use tracing::debug;
 
-/// Only `program_id` / `signer` / `webhook_url` drive behaviour; the rest is
-/// validated for shape and otherwise ignored in favour of the on-chain PDA.
+/// The actual build parameters come from the on-chain Otter Verify PDA;
+/// everything else the request body might carry (repository, commit_hash,
+/// lib_name, base_image, mount_path, cargo_args, bpf_flag, arch) is ignored
+/// by serde's default behaviour.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct VerifyRequest {
-    pub repository: RepositoryUrl,
     pub program_id: ProgramId,
     #[serde(default)]
-    pub commit_hash: Option<String>,
-    #[serde(default)]
-    pub lib_name: Option<String>,
-    #[serde(default)]
-    pub bpf_flag: Option<bool>,
-    #[serde(default, rename = "base_image")]
-    pub base_image: Option<String>,
-    #[serde(default)]
-    pub mount_path: Option<String>,
-    #[serde(default)]
-    pub cargo_args: Option<Vec<String>>,
-    #[serde(default)]
-    pub arch: Option<String>,
+    pub signer: Option<Signer>,
     #[serde(default)]
     pub webhook_url: Option<WebhookUrl>,
-    #[serde(default)]
-    pub signer: Option<Signer>,
 }
 
 #[derive(Debug, Deserialize)]

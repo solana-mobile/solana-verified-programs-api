@@ -1,7 +1,7 @@
 use crate::{
     config::CONFIG,
     db::Db,
-    handlers::{read, system, verify, webhooks},
+    handlers::{health, index, read, verify, webhooks},
 };
 use axum::{
     http::{Method, Request},
@@ -93,9 +93,9 @@ pub fn build(db: Db) -> Router {
         .merge(verify_group)
         .merge(webhook_group)
         .merge(read_group)
-        .route("/", get(system::landing))
-        .route("/api", get(system::index))
-        .route("/health", get(system::health))
+        .route("/", get(index::landing_page))
+        .route("/api", get(index::index))
+        .route("/health", get(health::health))
         .layer(cors(Method::GET))
         .layer(CompressionLayer::new().zstd(true))
         .layer(trace)

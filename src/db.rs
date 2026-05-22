@@ -72,15 +72,13 @@ pub struct BuildRow {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
+/// Subset of `program_state` callers actually read. `authority` and
+/// `last_checked` exist on the row but aren't surfaced anywhere yet.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ProgramStateRow {
-    pub program_id: String,
     pub on_chain_hash: Option<String>,
-    pub authority: Option<String>,
     pub is_frozen: bool,
     pub is_closed: bool,
-    pub last_checked: DateTime<Utc>,
 }
 
 /// Identifying parameters for a build, before insertion.
@@ -156,13 +154,11 @@ impl Db {
 
     /// Fetches a build by id.
     pub async fn get_build(&self, id: Uuid) -> Result<Option<BuildRow>> {
-        Ok(sqlx::query_as!(
-            BuildRow,
-            "SELECT * FROM builds WHERE id = $1",
-            id,
+        Ok(
+            sqlx::query_as!(BuildRow, "SELECT * FROM builds WHERE id = $1", id,)
+                .fetch_optional(&self.pool)
+                .await?,
         )
-        .fetch_optional(&self.pool)
-        .await?)
     }
 
     /// Most recent non-failed build with identical params. Failed rows are
@@ -263,7 +259,7 @@ impl Db {
     pub async fn get_program_state(&self, program_id: &str) -> Result<Option<ProgramStateRow>> {
         Ok(sqlx::query_as!(
             ProgramStateRow,
-            "SELECT * FROM program_state WHERE program_id = $1",
+            "SELECT on_chain_hash, is_frozen, is_closed FROM program_state WHERE program_id = $1",
             program_id,
         )
         .fetch_optional(&self.pool)

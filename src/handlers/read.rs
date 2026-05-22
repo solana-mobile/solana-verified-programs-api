@@ -296,7 +296,10 @@ pub async fn verified_programs_status(
         Ok(builds) => {
             // Every row here passed the join filter, so is_verified is always
             // true and on_chain_hash == executable_hash.
-            let data = builds.into_iter().map(verified_program_status_row).collect();
+            let data = builds
+                .into_iter()
+                .map(verified_program_status_row)
+                .collect();
             (
                 StatusCode::OK,
                 Json(VerifiedProgramsStatusListResponse {
