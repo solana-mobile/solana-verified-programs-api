@@ -16,7 +16,7 @@ pub struct Config {
 }
 
 fn default_sweep_interval() -> u64 {
-    3600
+    300
 }
 
 pub static CONFIG: once_cell::sync::Lazy<Config> = once_cell::sync::Lazy::new(|| {

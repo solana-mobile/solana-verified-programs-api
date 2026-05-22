@@ -252,6 +252,11 @@ fn parse_program_data_authority(data: &[u8]) -> Option<String> {
 
 /// `sha256(data with trailing zeros stripped)`, hex-encoded. Matches
 /// `solana-verify get-program-hash`'s output byte-for-byte.
+//
+// TODO: solana-verify is binary-only today. If it ships a library crate
+// upstream we can drop this function and the PROGRAM_DATA_HEADER_SIZE
+// constant in favour of their `get_binary_hash` /
+// `UpgradeableLoaderState::size_of_programdata_metadata()`.
 fn compute_program_hash(data: &[u8]) -> String {
     let trimmed = match data.iter().rposition(|&b| b != 0) {
         Some(i) => &data[..=i],

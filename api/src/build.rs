@@ -118,6 +118,9 @@ pub async fn run_build(build_id: Uuid, params: &NewBuild, db: &Db) -> Result<Ver
     })
 }
 
+// TODO: drive solana-verify in-process if it gains a library API; the
+// binary is currently the only way to run `verify-from-repo`, so we shell
+// out and parse its stdout via `extract_hash_with_prefix`.
 fn build_command(p: &NewBuild) -> Command {
     let mut cmd = Command::new("solana-verify");
     cmd.stdin(Stdio::piped())
