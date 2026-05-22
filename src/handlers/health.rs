@@ -7,7 +7,7 @@ pub async fn health(State(db): State<Db>) -> (StatusCode, Json<Value>) {
     let db_ok = db.ping().await.is_ok();
     let last = db.last_sweep_at().await.ok().flatten();
     let now = chrono::Utc::now();
-    let interval = chrono::Duration::seconds(crate::config::CONFIG.sweep_interval_seconds as i64);
+    let interval = chrono::Duration::seconds(crate::CONFIG.sweep_interval_seconds as i64);
     let sweep_ok = match last {
         Some(t) => now - t <= interval * 2,
         None => true,
@@ -38,7 +38,7 @@ pub async fn background_jobs(
 ) -> (StatusCode, Json<BackgroundJobHealth>) {
     let last = db.last_sweep_at().await.ok().flatten();
     let now = chrono::Utc::now();
-    let interval = chrono::Duration::seconds(crate::config::CONFIG.sweep_interval_seconds as i64);
+    let interval = chrono::Duration::seconds(crate::CONFIG.sweep_interval_seconds as i64);
 
     let health = match last {
         Some(t) => {

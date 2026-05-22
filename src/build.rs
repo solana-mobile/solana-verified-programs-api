@@ -1,7 +1,7 @@
 //! Spawning and lifecycle of `solana-verify` builds.
 
 use crate::{
-    config::CONFIG,
+    CONFIG,
     db::{Db, NewBuild},
     error::{ApiError, Result},
     logs,

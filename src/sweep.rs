@@ -2,7 +2,7 @@
 //! the fast path. Each cycle covers every row in `program_state` via batched
 //! `getMultipleAccounts` calls.
 
-use crate::{config::CONFIG, db::Db, onchain::snapshot_programs};
+use crate::{CONFIG, db::Db, onchain::snapshot_programs};
 use solana_pubkey::Pubkey;
 use std::{str::FromStr, time::Duration};
 use tracing::{error, info};

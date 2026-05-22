@@ -13,7 +13,7 @@ pub mod verified_programs_status;
 pub mod verify_helpers;
 
 use crate::{
-    config::CONFIG,
+    CONFIG,
     db::Db,
     error::{ApiError, Result},
     onchain::snapshot_programs,
