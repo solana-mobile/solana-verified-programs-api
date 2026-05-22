@@ -1,17 +1,17 @@
 use crate::db::Db;
 use axum::http::Request;
 use axum::{
+    BoxError, Router,
     error_handling::HandleErrorLayer,
     http::{Method, StatusCode},
     response::Response,
     routing::{get, post},
-    BoxError, Router,
 };
 use std::sync::Arc;
 use std::time::Duration;
-use tower::{buffer::BufferLayer, limit::RateLimitLayer, ServiceBuilder};
+use tower::{ServiceBuilder, buffer::BufferLayer, limit::RateLimitLayer};
 use tower_governor::{
-    governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer,
+    GovernorLayer, governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor,
 };
 use tower_http::{
     compression::CompressionLayer,
@@ -21,8 +21,9 @@ use tower_http::{
 use tracing::Span;
 
 use crate::handlers::{
-    self, *,
+    self,
     index::{index, landing_page},
+    *,
 };
 
 pub fn initialize_router(db: Db) -> Router {

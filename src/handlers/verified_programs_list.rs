@@ -41,23 +41,24 @@ pub(crate) async fn get_verified_programs_list_paginated(
     let search: Option<&str> = query.search.as_deref();
 
     if let Some(s) = search
-        && let Err(msg) = validation::validate_search(s) {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(VerifiedProgramListResponse {
-                    meta: PaginationMeta {
-                        total: 0,
-                        page,
-                        total_pages: 0,
-                        items_per_page: PER_PAGE,
-                        has_next_page: false,
-                        has_prev_page: false,
-                    },
-                    verified_programs: vec![],
-                    error: Some(msg),
-                }),
-            );
-        }
+        && let Err(msg) = validation::validate_search(s)
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(VerifiedProgramListResponse {
+                meta: PaginationMeta {
+                    total: 0,
+                    page,
+                    total_pages: 0,
+                    items_per_page: PER_PAGE,
+                    has_next_page: false,
+                    has_prev_page: false,
+                },
+                verified_programs: vec![],
+                error: Some(msg),
+            }),
+        );
+    }
 
     let (verified_programs, total) = match db.get_verified_program_ids_page(page, search).await {
         Ok(result) => result,

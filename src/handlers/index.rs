@@ -1,7 +1,7 @@
 // src/handlers/index.rs
 
-use axum::{response::Html, Json};
-use serde_json::{json, Value};
+use axum::{Json, response::Html};
+use serde_json::{Value, json};
 use std::sync::OnceLock;
 
 /// Static JSON response for the index endpoint

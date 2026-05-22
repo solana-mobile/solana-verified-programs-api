@@ -3,11 +3,9 @@
 //! cached row per program). All queries are compile-time-checked via
 //! sqlx's `query!`/`query_as!`/`query_scalar!` macros.
 
-use crate::{
-    CONFIG, errors::ApiError, errors::Result, onchain::ProgramOnchainState,
-};
+use crate::{CONFIG, errors::ApiError, errors::Result, onchain::ProgramOnchainState};
 use chrono::{DateTime, Utc};
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::time::Duration;
 use tracing::info;
 use uuid::Uuid;
@@ -211,10 +209,7 @@ impl Db {
     }
 
     /// One row per signer — the signer's most recent completed claim for the program.
-    pub async fn completed_builds_by_signer(
-        &self,
-        program_id: &str,
-    ) -> Result<Vec<BuildRow>> {
+    pub async fn completed_builds_by_signer(&self, program_id: &str) -> Result<Vec<BuildRow>> {
         Ok(sqlx::query_as!(
             BuildRow,
             "SELECT DISTINCT ON (signer) *
@@ -308,10 +303,7 @@ impl Db {
     /// One-call view of "is program X verified", joining `program_state`
     /// (cached on-chain hash + frozen/closed flags) with the best matching
     /// completed build.
-    pub async fn check_is_verified(
-        &self,
-        program_id: String,
-    ) -> Result<VerificationStatusResult> {
+    pub async fn check_is_verified(&self, program_id: String) -> Result<VerificationStatusResult> {
         let state = self.get_program_state(&program_id).await?;
         let on_chain_hash = state
             .as_ref()
@@ -331,7 +323,10 @@ impl Db {
                     is_verified,
                     on_chain_hash,
                     executable_hash: b.executable_hash.unwrap_or_default(),
-                    repo_url: crate::onchain::build_repo_url(&b.repository, b.commit_hash.as_deref()),
+                    repo_url: crate::onchain::build_repo_url(
+                        &b.repository,
+                        b.commit_hash.as_deref(),
+                    ),
                     commit: b.commit_hash.unwrap_or_default(),
                     last_verified_at: b.completed_at.map(|t| t.naive_utc()),
                     is_frozen,

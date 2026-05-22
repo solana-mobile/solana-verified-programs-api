@@ -4,15 +4,15 @@ use crate::{errors::ApiError, errors::Result, rpc::get_rpc_manager};
 use borsh::{BorshDeserialize, BorshSerialize};
 use sha2::{Digest, Sha256};
 use solana_account_decoder::parse_bpf_loader::{
-    parse_bpf_upgradeable_loader, BpfUpgradeableLoaderAccountType, UiProgram, UiProgramData,
+    BpfUpgradeableLoaderAccountType, UiProgram, UiProgramData, parse_bpf_upgradeable_loader,
 };
 use solana_client::{
     nonblocking::rpc_client::RpcClient, rpc_client::GetConfirmedSignaturesForAddress2Config,
     rpc_config::RpcTransactionConfig,
 };
 use solana_pubkey::Pubkey;
-use solana_signature::Signature;
 use solana_sdk_ids::{bpf_loader, bpf_loader_deprecated, bpf_loader_upgradeable};
+use solana_signature::Signature;
 use solana_transaction_status::{EncodedTransaction, UiMessage, UiTransactionEncoding};
 use std::{collections::HashMap, str::FromStr};
 use tracing::warn;
@@ -284,10 +284,13 @@ pub async fn get_program_state(program_id: &Pubkey) -> Result<ProgramOnchainStat
         .await?
         .remove(program_id)
         .unwrap_or_else(ProgramOnchainState::empty);
-    if state.is_frozen && state.authority.is_none() && !state.is_closed
-        && let Ok(Some(auth)) = recover_burned_authority(program_id).await {
-            state.authority = Some(auth);
-        }
+    if state.is_frozen
+        && state.authority.is_none()
+        && !state.is_closed
+        && let Ok(Some(auth)) = recover_burned_authority(program_id).await
+    {
+        state.authority = Some(auth);
+    }
     Ok(state)
 }
 
@@ -322,22 +325,22 @@ async fn recover_burned_authority(program_id: &Pubkey) -> Result<Option<String>>
                 )
                 .await?;
             if let EncodedTransaction::Json(ui) = tx.transaction.transaction
-                && let UiMessage::Raw(raw) = &ui.message {
-                    if let Some(squads_idx) =
-                        raw.account_keys.iter().position(|k| k == SQUADS_PROGRAM_ID)
-                    {
-                        let squads_idx = squads_idx as u8;
-                        for ix in &raw.instructions {
-                            if ix.program_id_index == squads_idx
-                                && ix.data == SQUADS_AUTHORITY_IX_DATA
-                            {
-                                let aidx = ix.accounts[SQUADS_AUTHORITY_ACCOUNT_INDEX] as usize;
-                                return Ok(Some(raw.account_keys[aidx].clone()));
-                            }
+                && let UiMessage::Raw(raw) = &ui.message
+            {
+                if let Some(squads_idx) =
+                    raw.account_keys.iter().position(|k| k == SQUADS_PROGRAM_ID)
+                {
+                    let squads_idx = squads_idx as u8;
+                    for ix in &raw.instructions {
+                        if ix.program_id_index == squads_idx && ix.data == SQUADS_AUTHORITY_IX_DATA
+                        {
+                            let aidx = ix.accounts[SQUADS_AUTHORITY_ACCOUNT_INDEX] as usize;
+                            return Ok(Some(raw.account_keys[aidx].clone()));
                         }
                     }
-                    return Ok(Some(raw.account_keys[0].clone()));
                 }
+                return Ok(Some(raw.account_keys[0].clone()));
+            }
             Ok(None)
         })
         .await
@@ -380,9 +383,10 @@ pub async fn get_otter_verify_params(
                 }
                 if let Some(authority_str) = authority
                     && let Ok(auth) = Pubkey::from_str(&authority_str)
-                        && let Ok(p) = get_otter_pda(&client, &auth, &program).await {
-                            return Ok((p, auth.to_string()));
-                        }
+                    && let Ok(p) = get_otter_pda(&client, &auth, &program).await
+                {
+                    return Ok((p, auth.to_string()));
+                }
                 for s in SIGNER_KEYS.iter() {
                     if let Ok(p) = get_otter_pda(&client, s, &program).await {
                         return Ok((p, s.to_string()));
