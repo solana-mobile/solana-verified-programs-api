@@ -4,7 +4,7 @@
 //! sqlx's `query!`/`query_as!`/`query_scalar!` macros.
 
 use crate::{
-    config::CONFIG, error::ApiError, error::Result, onchain::ProgramOnchainState, types::ProgramId,
+    config::CONFIG, error::ApiError, error::Result, onchain::ProgramOnchainState,
 };
 use chrono::{DateTime, Utc};
 use sqlx::{postgres::PgPoolOptions, PgPool};
@@ -198,7 +198,7 @@ impl Db {
     /// One row per signer — the signer's most recent completed claim for the program.
     pub async fn completed_builds_by_signer(
         &self,
-        program_id: &ProgramId,
+        program_id: &str,
     ) -> Result<Vec<BuildRow>> {
         Ok(sqlx::query_as!(
             BuildRow,
@@ -206,7 +206,7 @@ impl Db {
              FROM builds
              WHERE program_id = $1 AND status = 'completed'
              ORDER BY signer, completed_at DESC",
-            program_id.as_str(),
+            program_id,
         )
         .fetch_all(&self.pool)
         .await?)
@@ -231,7 +231,7 @@ impl Db {
     /// carrying repo/commit data after an upgrade.
     pub async fn best_build(
         &self,
-        program_id: &ProgramId,
+        program_id: &str,
         prefer_hash: Option<&str>,
     ) -> Result<Option<BuildRow>> {
         Ok(sqlx::query_as!(
@@ -240,7 +240,7 @@ impl Db {
              WHERE program_id = $1 AND status = 'completed'
              ORDER BY (executable_hash IS NOT DISTINCT FROM $2) DESC, completed_at DESC
              LIMIT 1",
-            program_id.as_str(),
+            program_id,
             prefer_hash,
         )
         .fetch_optional(&self.pool)

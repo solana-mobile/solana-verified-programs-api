@@ -10,7 +10,6 @@ use crate::{
         ProgramOnchainState,
     },
     response::VerificationWebhookPayload,
-    types::ProgramId,
 };
 use chrono::Utc;
 use solana_pubkey::Pubkey;
@@ -29,42 +28,6 @@ pub struct VerifyOutcome {
     pub on_chain_hash: String,
     pub executable_hash: String,
     pub is_verified: bool,
-}
-
-/// Resolves a verification request to its concrete build parameters.
-///
-/// The Otter Verify PDA — not the request body — is the source of truth;
-/// `explicit_signer` pins which claim to use when set.
-pub async fn resolve_build_params(
-    program_id: &ProgramId,
-    explicit_signer: Option<Pubkey>,
-) -> Result<(NewBuild, String, ProgramOnchainState)> {
-    let state = get_program_state(&program_id.0)
-        .await
-        .unwrap_or(ProgramOnchainState {
-            authority: None,
-            is_frozen: false,
-            is_closed: false,
-            executable_hash: None,
-        });
-    let (params, signer) =
-        get_otter_verify_params(&program_id.0, explicit_signer, state.authority.as_deref()).await?;
-    Ok((build_from_pda(&params, &signer), signer, state))
-}
-
-fn build_from_pda(p: &OtterBuildParams, signer: &str) -> NewBuild {
-    NewBuild {
-        repository: p.git_url.clone(),
-        commit_hash: Some(p.commit.clone()),
-        program_id: p.address.to_string(),
-        lib_name: p.library_name(),
-        base_docker_image: p.base_image(),
-        mount_path: p.mount_path(),
-        cargo_args: p.cargo_args(),
-        bpf_flag: p.bpf(),
-        arch: p.arch(),
-        signer: Some(signer.to_string()),
-    }
 }
 
 /// Runs `solana-verify verify-from-repo` once and parses the output. On

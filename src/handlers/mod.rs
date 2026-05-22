@@ -10,6 +10,7 @@ pub mod unverify;
 pub mod verification_status;
 pub mod verified_programs_list;
 pub mod verified_programs_status;
+pub mod verify_helpers;
 
 use crate::{
     config::CONFIG,

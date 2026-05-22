@@ -3,15 +3,14 @@
 use crate::{
     db::{Db, PER_PAGE},
     response::{PaginationMeta, VerifiedProgramListResponse},
-    types::SearchQuery,
+    validation,
 };
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use serde::Deserialize;
-use std::str::FromStr;
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
@@ -32,24 +31,19 @@ pub async fn paginated(
     Query(q): Query<ListQuery>,
 ) -> (StatusCode, Json<VerifiedProgramListResponse>) {
     let page = page.max(1);
-    let search = match q.search.as_deref() {
-        Some(s) => match SearchQuery::from_str(s) {
-            Ok(v) => v,
-            Err(msg) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(VerifiedProgramListResponse {
-                        meta: empty_meta(page),
-                        verified_programs: vec![],
-                        error: Some(msg),
-                    }),
-                );
-            }
-        },
-        None => SearchQuery::from_str("").unwrap(),
-    };
+    let search = q.search.as_deref().unwrap_or("").trim();
+    if let Err(msg) = validation::validate_search(search) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(VerifiedProgramListResponse {
+                meta: empty_meta(page),
+                verified_programs: vec![],
+                error: Some(msg),
+            }),
+        );
+    }
 
-    match db.verified_programs_page(page, search.as_str()).await {
+    match db.verified_programs_page(page, search).await {
         Ok((ids, total)) => {
             let total_pages = (total + PER_PAGE - 1) / PER_PAGE;
             (

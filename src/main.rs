@@ -11,7 +11,7 @@ mod response;
 mod routes;
 mod rpc;
 mod sweep;
-mod types;
+mod validation;
 
 use config::CONFIG;
 

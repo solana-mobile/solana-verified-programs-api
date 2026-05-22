@@ -3,25 +3,25 @@
 use crate::{
     db::{BuildRow, Db},
     error::Result,
-    handlers::status_message,
+    handlers::{status_message, verify_helpers::validate_program_id},
     onchain::build_repo_url,
     response::{
         ExtendedStatusResponse, StatusResponse, VerificationResponse,
         VerificationResponseWithSigner,
     },
-    types::ProgramId,
 };
 use axum::{
-    extract::{Path, State},
     Json,
+    extract::{Path, State},
 };
 
 pub async fn status(
     State(db): State<Db>,
-    Path(program_id): Path<ProgramId>,
-) -> Json<ExtendedStatusResponse> {
+    Path(address): Path<String>,
+) -> Result<Json<ExtendedStatusResponse>> {
+    let program_id = validate_program_id(&address)?;
     let state = db
-        .get_program_state(&program_id.as_str())
+        .get_program_state(&program_id.to_string())
         .await
         .ok()
         .flatten();
@@ -35,7 +35,7 @@ pub async fn status(
     // completed builds exist (post-upgrade history). Sequential is the
     // simplest correct shape.
     let build = db
-        .best_build(&program_id, Some(on_chain_hash.as_str()))
+        .best_build(&program_id.to_string(), Some(on_chain_hash.as_str()))
         .await
         .ok()
         .flatten();
@@ -65,18 +65,19 @@ pub async fn status(
             last_verified_at: None,
         },
     };
-    Json(ExtendedStatusResponse {
+    Ok(Json(ExtendedStatusResponse {
         status,
         is_frozen,
         is_closed,
-    })
+    }))
 }
 
 pub async fn status_all(
     State(db): State<Db>,
-    Path(program_id): Path<ProgramId>,
+    Path(address): Path<String>,
 ) -> Result<Json<Vec<VerificationResponseWithSigner>>> {
-    let state = db.get_program_state(&program_id.as_str()).await?;
+    let program_id = validate_program_id(&address)?;
+    let state = db.get_program_state(&program_id.to_string()).await?;
     let on_chain_hash = state
         .as_ref()
         .and_then(|s| s.on_chain_hash.clone())
@@ -84,7 +85,7 @@ pub async fn status_all(
     let is_frozen = state.as_ref().is_some_and(|s| s.is_frozen);
     let is_closed = state.as_ref().is_some_and(|s| s.is_closed);
 
-    let builds = db.completed_builds_by_signer(&program_id).await?;
+    let builds = db.completed_builds_by_signer(&program_id.to_string()).await?;
     let out = builds
         .into_iter()
         .map(|b| build_with_signer(b, &on_chain_hash, is_frozen, is_closed))

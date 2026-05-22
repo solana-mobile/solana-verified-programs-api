@@ -1,29 +1,37 @@
 //! Synchronous program verification: `POST /verify_sync`.
 
 use crate::{
-    build::{self, resolve_build_params},
-    db::{Db, BUILD_STATUS_COMPLETED, BUILD_STATUS_IN_PROGRESS},
+    build,
+    db::{BUILD_STATUS_COMPLETED, BUILD_STATUS_IN_PROGRESS, Db},
     error::Result,
-    handlers::async_verify::VerifyRequest,
-    handlers::status_message,
+    handlers::{
+        async_verify::VerifyRequest,
+        status_message,
+        verify_helpers::{
+            create_and_insert_build, setup_verification, validate_program_id, validate_webhook_url,
+        },
+    },
     onchain::build_repo_url,
     response::{StatusResponse, VerifyResponse},
 };
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use chrono::Utc;
 use serde_json::Value;
-use tracing::debug;
+use tracing::info;
 
 /// Returns a [`StatusResponse`] for a fresh/completed build, or a
 /// [`VerifyResponse`] when an in-progress duplicate is found — those shapes
 /// are distinct, hence the `Value` return.
 pub async fn verify_sync(
     State(db): State<Db>,
-    Json(req): Json<VerifyRequest>,
+    Json(payload): Json<VerifyRequest>,
 ) -> Result<(StatusCode, Json<Value>)> {
-    debug!("verify_sync program={}", req.program_id);
-    let (params, _signer, _state) =
-        resolve_build_params(&req.program_id, req.signer.map(|s| s.0)).await?;
+    let program_id = validate_program_id(&payload.program_id)?;
+    validate_webhook_url(&payload.webhook_url)?;
+
+    info!("Starting sync verification for program: {}", program_id);
+
+    let (params, _signer) = setup_verification(&db, &program_id, None).await?;
 
     if let Some(dup) = db.find_duplicate(&params).await? {
         match dup.status.as_str() {
@@ -60,7 +68,7 @@ pub async fn verify_sync(
         }
     }
 
-    let id = db.insert_build(&params).await?;
+    let id = create_and_insert_build(&db, &params).await?;
     let outcome = build::run_build(id, &params, &db).await?;
     build::finalize_completed(&db, id, &outcome, &params.program_id).await;
     let resp = StatusResponse {
