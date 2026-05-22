@@ -1,15 +1,10 @@
 FROM rust:1.93 AS build
 
-WORKDIR /api
+WORKDIR /src
 
-RUN apt-get update && apt-get install -y \
-    libudev-dev \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libudev-dev pkg-config && rm -rf /var/lib/apt/lists/*
 
-COPY api ./api
-
-WORKDIR /api/api
+COPY . .
 
 ENV SQLX_OFFLINE=true
 RUN cargo build --release
@@ -18,9 +13,9 @@ RUN cargo install solana-verify --git https://github.com/solana-foundation/solan
 
 FROM debian:stable-slim AS final
 
-WORKDIR /api
+WORKDIR /app
 
-COPY --from=build /api/api/target/release/verified_programs_api .
+COPY --from=build /src/target/release/verified_programs_api .
 COPY --from=build /usr/local/cargo/bin/solana-verify /usr/local/bin/solana-verify
 
 RUN apt-get update && apt-get install -y docker.io ca-certificates && rm -rf /var/lib/apt/lists/*

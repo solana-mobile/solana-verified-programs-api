@@ -17,8 +17,8 @@ jobs:
       fail-fast: true
       matrix:
         image:
-        - { name: 'api', dockerfile: 'api/Dockerfile' }
-        - { name: 'db-init', dockerfile: 'api/Dockerfile.db-init' }
+        - { name: 'api', dockerfile: 'Dockerfile' }
+        - { name: 'db-init', dockerfile: 'Dockerfile.db-init' }
     permissions:
       contents: read
       id-token: write

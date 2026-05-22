@@ -4,6 +4,6 @@ RUN cargo install sqlx-cli --no-default-features --features rustls,postgres --ve
 
 WORKDIR /app
 
-COPY ./api/migrations/ /migrations
+COPY ./migrations/ /migrations
 
 CMD ["sqlx", "migrate", "run", "--source", "/migrations"]
