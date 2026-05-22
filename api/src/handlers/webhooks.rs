@@ -2,7 +2,7 @@ use crate::{
     build,
     db::Db,
     handlers::is_authorized,
-    onchain::{get_on_chain_hash, OtterBuildParams, OTTER_VERIFY_PROGRAM_ID},
+    onchain::{snapshot_programs, OtterBuildParams, OTTER_VERIFY_PROGRAM_ID},
     rpc::rpc,
 };
 use axum::{
@@ -76,8 +76,8 @@ pub async fn unverify(
         for ix in tx.instructions {
             if ix.data == UPGRADE_INSTRUCTION_DATA {
                 let program_id = &ix.accounts[1];
-                if let Err(e) = refresh_on_chain_hash(&db, program_id).await {
-                    error!("refresh on-chain hash for {}: {}", program_id, e);
+                if let Err(e) = refresh_state(&db, program_id).await {
+                    error!("refresh state for {}: {}", program_id, e);
                 }
             }
         }
@@ -85,21 +85,15 @@ pub async fn unverify(
     (StatusCode::OK, "Unverify request received")
 }
 
-async fn refresh_on_chain_hash(db: &Db, program_id: &str) -> crate::error::Result<()> {
-    match get_on_chain_hash(program_id).await {
-        Ok(h) => {
-            db.set_program_on_chain_hash(program_id, &h).await?;
-            info!("refreshed on-chain hash for {}", program_id);
-            Ok(())
-        }
-        Err(e) => {
-            if e.to_string().contains("Program appears to be closed") {
-                db.mark_closed(program_id).await?;
-                return Ok(());
-            }
-            Err(e)
-        }
+async fn refresh_state(db: &Db, program_id: &str) -> crate::error::Result<()> {
+    let pid = Pubkey::from_str(program_id)
+        .map_err(|e| crate::error::ApiError::BadRequest(e.to_string()))?;
+    let mut snaps = snapshot_programs(&[pid]).await?;
+    if let Some(snap) = snaps.remove(&pid) {
+        db.upsert_program_state(program_id, &snap).await?;
+        info!("refreshed state for {}", program_id);
     }
+    Ok(())
 }
 
 pub async fn pda(
@@ -138,8 +132,7 @@ pub async fn pda(
 }
 
 async fn process_pda(db: &Db, program_id: &str, pda_account: &str) -> crate::error::Result<()> {
-    // Refresh on-chain hash first (fast path).
-    refresh_on_chain_hash(db, program_id).await.ok();
+    refresh_state(db, program_id).await.ok();
 
     let pda_pubkey = Pubkey::from_str(pda_account)
         .map_err(|e| crate::error::ApiError::BadRequest(e.to_string()))?;

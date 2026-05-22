@@ -120,12 +120,7 @@ pub async fn verify_sync(
 
     let id = db.insert_build(&params).await?;
     let outcome = build::run_build(id, &params, &db).await?;
-    db.mark_build_completed(id, &outcome.executable_hash)
-        .await?;
-    if !outcome.on_chain_hash.is_empty() {
-        db.set_program_on_chain_hash(&params.program_id, &outcome.on_chain_hash)
-            .await?;
-    }
+    build::finalize_completed(&db, id, &outcome, &params.program_id).await;
     let resp = StatusResponse {
         is_verified: outcome.is_verified,
         message: if outcome.is_verified {

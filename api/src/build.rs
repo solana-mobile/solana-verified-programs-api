@@ -39,25 +39,14 @@ pub async fn resolve_build_params(
     program_id: &ProgramId,
     explicit_signer: Option<Pubkey>,
 ) -> Result<(NewBuild, String, ProgramOnchainState)> {
-    let state = match get_program_state(&program_id.0).await {
-        Ok(s) => s,
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("Program appears to be closed") {
-                ProgramOnchainState {
-                    authority: None,
-                    is_frozen: false,
-                    is_closed: true,
-                }
-            } else {
-                ProgramOnchainState {
-                    authority: None,
-                    is_frozen: false,
-                    is_closed: false,
-                }
-            }
-        }
-    };
+    let state = get_program_state(&program_id.0)
+        .await
+        .unwrap_or(ProgramOnchainState {
+            authority: None,
+            is_frozen: false,
+            is_closed: false,
+            executable_hash: None,
+        });
     let (params, signer) =
         get_otter_verify_params(&program_id.0, explicit_signer, state.authority.as_deref()).await?;
     Ok((build_from_pda(&params, &signer), signer, state))
@@ -172,21 +161,7 @@ pub async fn execute(build_id: Uuid, params: NewBuild, db: Db, webhook_url: Opti
     let result = run_build(build_id, &params, &db).await;
     let payload = match &result {
         Ok(out) => {
-            if let Err(e) = db
-                .mark_build_completed(build_id, &out.executable_hash)
-                .await
-            {
-                error!("mark completed: {}", e);
-            }
-            // Refresh on-chain hash for the program (cheap — we already saw it).
-            if !out.on_chain_hash.is_empty() {
-                if let Err(e) = db
-                    .set_program_on_chain_hash(&program_id, &out.on_chain_hash)
-                    .await
-                {
-                    error!("set on-chain hash: {}", e);
-                }
-            }
+            finalize_completed(&db, build_id, out, &program_id).await;
             VerificationWebhookPayload {
                 request_id: build_id.to_string(),
                 status: "completed".into(),
@@ -229,6 +204,37 @@ pub async fn execute(build_id: Uuid, params: NewBuild, db: Db, webhook_url: Opti
 
     if let Some(url) = webhook_url {
         post_webhook(&url, &payload).await;
+    }
+}
+
+/// Marks the build completed and refreshes `program_state` from chain.
+/// Shared by the async [`execute`] and `verify_sync` post-build paths.
+pub async fn finalize_completed(
+    db: &Db,
+    build_id: Uuid,
+    outcome: &VerifyOutcome,
+    program_id: &str,
+) {
+    if let Err(e) = db
+        .mark_build_completed(build_id, &outcome.executable_hash)
+        .await
+    {
+        error!("mark completed: {}", e);
+    }
+    let Ok(pid) = Pubkey::from_str(program_id) else {
+        return;
+    };
+    let snapshots = match crate::onchain::snapshot_programs(&[pid]).await {
+        Ok(s) => s,
+        Err(e) => {
+            error!("snapshot {}: {}", program_id, e);
+            return;
+        }
+    };
+    if let Some(snap) = snapshots.get(&pid) {
+        if let Err(e) = db.upsert_program_state(program_id, snap).await {
+            error!("upsert state {}: {}", program_id, e);
+        }
     }
 }
 

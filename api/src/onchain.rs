@@ -1,7 +1,8 @@
 //! Everything that touches the Solana chain.
 
-use crate::{config::CONFIG, error::ApiError, error::Result, rpc::rpc};
+use crate::{error::ApiError, error::Result, rpc::rpc};
 use borsh::{BorshDeserialize, BorshSerialize};
+use sha2::{Digest, Sha256};
 use solana_account_decoder::parse_bpf_loader::{
     parse_bpf_upgradeable_loader, BpfUpgradeableLoaderAccountType, UiProgram, UiProgramData,
 };
@@ -10,11 +11,10 @@ use solana_client::{
     rpc_config::RpcTransactionConfig,
 };
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
-use solana_sdk_ids::{bpf_loader_upgradeable, system_program};
+use solana_sdk_ids::{bpf_loader, bpf_loader_deprecated, bpf_loader_upgradeable};
 use solana_transaction_status::{EncodedTransaction, UiMessage, UiTransactionEncoding};
-use std::{str::FromStr, sync::Arc};
-use tokio::process::Command;
-use tracing::{error, warn};
+use std::{collections::HashMap, str::FromStr};
+use tracing::warn;
 
 pub const OTTER_VERIFY_PROGRAM_ID: Pubkey =
     solana_sdk::pubkey!("verifycLy8mB96wd9wqq3WDXQwM4oU6r42Th37Db9fC");
@@ -27,18 +27,47 @@ pub const SIGNER_KEYS: [Pubkey; 3] = [
     solana_sdk::pubkey!("5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r"),
 ];
 
+// Stable per the BPF loader v3 spec:
+// bincode(UpgradeableLoaderState::ProgramData{slot, Some(Pubkey)}) =
+//   4-byte enum tag + 8-byte slot + 1-byte option discriminator + 32-byte pubkey.
+const PROGRAM_DATA_HEADER_SIZE: usize = 45;
+
+// Solana RPC servers cap getMultipleAccounts at 100.
+const GMA_CHUNK: usize = 100;
+
 // Squads-frozen programs route the final upgrade through the Squads multisig;
 // the burned authority is the 5th account on this specific instruction.
 const SQUADS_PROGRAM_ID: &str = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
 const SQUADS_AUTHORITY_IX_DATA: &str = "ZTNTtVtnvbC";
 const SQUADS_AUTHORITY_ACCOUNT_INDEX: usize = 4;
 
-/// Authority + flags fetched from chain (the non-hash half of `program_state`).
+/// Snapshot of the on-chain side of a program — what gets written to `program_state`.
 #[derive(Debug, Clone)]
 pub struct ProgramOnchainState {
     pub authority: Option<String>,
     pub is_frozen: bool,
     pub is_closed: bool,
+    pub executable_hash: Option<String>,
+}
+
+impl ProgramOnchainState {
+    fn closed() -> Self {
+        Self {
+            authority: None,
+            is_frozen: false,
+            is_closed: true,
+            executable_hash: None,
+        }
+    }
+
+    fn empty() -> Self {
+        Self {
+            authority: None,
+            is_frozen: false,
+            is_closed: false,
+            executable_hash: None,
+        }
+    }
 }
 
 /// Borsh layout of an Otter Verify PDA. The leading 8-byte Anchor
@@ -91,152 +120,215 @@ impl OtterBuildParams {
     }
 }
 
-/// Looks up `(authority, is_frozen, is_closed)` for a program. For frozen
-/// programs the authority is recovered from the last transaction on the
-/// program-data PDA (Squads-shaped freezes are decoded specially).
+/// Batched on-chain snapshot for many programs at once.
+///
+/// Two `getMultipleAccounts` calls per chunk of 100: one for the program
+/// accounts (to extract program-data PDAs and handle legacy loaders), one
+/// for the program-data accounts. Executable hash is computed inline from
+/// the bytes — no `solana-verify` subprocess.
+///
+/// For programs frozen with no authority on the program-data account,
+/// `authority` is left `None` and `is_frozen` is `true`. The Squads
+/// transaction-history recovery only runs from [`get_program_state`].
+pub async fn snapshot_programs(ids: &[Pubkey]) -> Result<HashMap<Pubkey, ProgramOnchainState>> {
+    let mut out = HashMap::with_capacity(ids.len());
+    for chunk in ids.chunks(GMA_CHUNK) {
+        snapshot_chunk(chunk, &mut out).await?;
+    }
+    Ok(out)
+}
+
+async fn snapshot_chunk(
+    ids: &[Pubkey],
+    out: &mut HashMap<Pubkey, ProgramOnchainState>,
+) -> Result<()> {
+    let ids_vec = ids.to_vec();
+    let accounts = rpc()
+        .run(|client| {
+            let ids_vec = ids_vec.clone();
+            async move {
+                client
+                    .get_multiple_accounts(&ids_vec)
+                    .await
+                    .map_err(|e| ApiError::Rpc(format!("getMultipleAccounts: {e}")))
+            }
+        })
+        .await?;
+
+    let mut to_fetch: Vec<(Pubkey, Pubkey)> = Vec::new();
+    for (id, maybe_acc) in ids.iter().zip(accounts.into_iter()) {
+        let Some(acc) = maybe_acc else {
+            out.insert(*id, ProgramOnchainState::closed());
+            continue;
+        };
+        if acc.owner == bpf_loader_upgradeable::ID {
+            match extract_program_data_pda(&acc.data) {
+                Ok(pda) => to_fetch.push((*id, pda)),
+                Err(e) => {
+                    warn!("program {} unparseable: {}", id, e);
+                    out.insert(*id, ProgramOnchainState::closed());
+                }
+            }
+        } else if acc.owner == bpf_loader::ID || acc.owner == bpf_loader_deprecated::ID {
+            // Legacy loaders: the account data IS the executable; immutable.
+            out.insert(
+                *id,
+                ProgramOnchainState {
+                    authority: None,
+                    is_frozen: true,
+                    is_closed: false,
+                    executable_hash: Some(compute_program_hash(&acc.data)),
+                },
+            );
+        } else {
+            warn!("program {} has unsupported owner {}", id, acc.owner);
+            out.insert(*id, ProgramOnchainState::closed());
+        }
+    }
+
+    if to_fetch.is_empty() {
+        return Ok(());
+    }
+
+    let pdas: Vec<Pubkey> = to_fetch.iter().map(|(_, p)| *p).collect();
+    let pda_accounts = rpc()
+        .run(|client| {
+            let pdas = pdas.clone();
+            async move {
+                client
+                    .get_multiple_accounts(&pdas)
+                    .await
+                    .map_err(|e| ApiError::Rpc(format!("getMultipleAccounts(program_data): {e}")))
+            }
+        })
+        .await?;
+
+    for ((program_id, _), maybe_acc) in to_fetch.iter().zip(pda_accounts.into_iter()) {
+        match maybe_acc {
+            None => {
+                out.insert(*program_id, ProgramOnchainState::closed());
+            }
+            Some(acc) => {
+                let authority = parse_program_data_authority(&acc.data);
+                let hash = if acc.data.len() > PROGRAM_DATA_HEADER_SIZE {
+                    Some(compute_program_hash(&acc.data[PROGRAM_DATA_HEADER_SIZE..]))
+                } else {
+                    None
+                };
+                out.insert(
+                    *program_id,
+                    ProgramOnchainState {
+                        is_frozen: authority.is_none(),
+                        authority,
+                        is_closed: false,
+                        executable_hash: hash,
+                    },
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn extract_program_data_pda(data: &[u8]) -> Result<Pubkey> {
+    match parse_bpf_upgradeable_loader(data)? {
+        BpfUpgradeableLoaderAccountType::Program(UiProgram { program_data }) => {
+            Pubkey::from_str(&program_data).map_err(Into::into)
+        }
+        other => Err(ApiError::Rpc(format!(
+            "expected Program account, got: {other:?}"
+        ))),
+    }
+}
+
+fn parse_program_data_authority(data: &[u8]) -> Option<String> {
+    match parse_bpf_upgradeable_loader(data) {
+        Ok(BpfUpgradeableLoaderAccountType::ProgramData(UiProgramData { authority, .. })) => {
+            authority
+        }
+        _ => None,
+    }
+}
+
+/// `sha256(data with trailing zeros stripped)`, hex-encoded. Matches
+/// `solana-verify get-program-hash`'s output byte-for-byte.
+fn compute_program_hash(data: &[u8]) -> String {
+    let trimmed = match data.iter().rposition(|&b| b != 0) {
+        Some(i) => &data[..=i],
+        None => &[][..],
+    };
+    let mut hasher = Sha256::new();
+    hasher.update(trimmed);
+    hex::encode(hasher.finalize())
+}
+
+/// Single-program snapshot, with Squads/burned-authority recovery via tx
+/// history when the program looks frozen but has no on-chain authority.
+/// Used by the verify path where the authority drives Otter Verify PDA lookup.
 pub async fn get_program_state(program_id: &Pubkey) -> Result<ProgramOnchainState> {
+    let mut state = snapshot_programs(&[*program_id])
+        .await?
+        .remove(program_id)
+        .unwrap_or_else(ProgramOnchainState::empty);
+    if state.is_frozen && state.authority.is_none() && !state.is_closed {
+        if let Ok(Some(auth)) = recover_burned_authority(program_id).await {
+            state.authority = Some(auth);
+        }
+    }
+    Ok(state)
+}
+
+async fn recover_burned_authority(program_id: &Pubkey) -> Result<Option<String>> {
+    let program_data_pda =
+        Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id()).0;
     rpc()
-        .run(|c| {
-            let pid = *program_id;
-            async move { fetch_program_state(c, &pid).await }
+        .run(|client| async move {
+            let cfg = GetConfirmedSignaturesForAddress2Config {
+                limit: Some(1),
+                before: None,
+                until: None,
+                commitment: None,
+            };
+            let sigs = client
+                .get_signatures_for_address_with_config(&program_data_pda, cfg)
+                .await
+                .map_err(|e| ApiError::Rpc(e.to_string()))?;
+            let Some(latest) = sigs.first() else {
+                return Ok(None);
+            };
+            let sig = Signature::from_str(&latest.signature)
+                .map_err(|e| ApiError::Rpc(format!("parse signature: {e}")))?;
+            let tx = client
+                .get_transaction_with_config(
+                    &sig,
+                    RpcTransactionConfig {
+                        encoding: Some(UiTransactionEncoding::Json),
+                        commitment: None,
+                        max_supported_transaction_version: Some(0),
+                    },
+                )
+                .await?;
+            if let EncodedTransaction::Json(ui) = tx.transaction.transaction {
+                if let UiMessage::Raw(raw) = &ui.message {
+                    if let Some(squads_idx) =
+                        raw.account_keys.iter().position(|k| k == SQUADS_PROGRAM_ID)
+                    {
+                        let squads_idx = squads_idx as u8;
+                        for ix in &raw.instructions {
+                            if ix.program_id_index == squads_idx
+                                && ix.data == SQUADS_AUTHORITY_IX_DATA
+                            {
+                                let aidx = ix.accounts[SQUADS_AUTHORITY_ACCOUNT_INDEX] as usize;
+                                return Ok(Some(raw.account_keys[aidx].clone()));
+                            }
+                        }
+                    }
+                    return Ok(Some(raw.account_keys[0].clone()));
+                }
+            }
+            Ok(None)
         })
         .await
-}
-
-async fn fetch_program_state(
-    client: Arc<RpcClient>,
-    program_id: &Pubkey,
-) -> Result<ProgramOnchainState> {
-    let program_bytes = client
-        .get_account_data(program_id)
-        .await
-        .map_err(|e| ApiError::Rpc(format!("fetch program account: {e}")))?;
-
-    let program_data_pda = match parse_bpf_upgradeable_loader(&program_bytes)? {
-        BpfUpgradeableLoaderAccountType::Program(UiProgram { program_data }) => {
-            Pubkey::from_str(&program_data)?
-        }
-        other => {
-            return Err(ApiError::Rpc(format!(
-                "expected Program account, got: {other:?}"
-            )))
-        }
-    };
-
-    match client.get_account_data(&program_data_pda).await {
-        Ok(bytes) => {
-            if let BpfUpgradeableLoaderAccountType::ProgramData(UiProgramData {
-                authority, ..
-            }) = parse_bpf_upgradeable_loader(&bytes)?
-            {
-                if authority.is_some() {
-                    return Ok(ProgramOnchainState {
-                        authority,
-                        is_frozen: false,
-                        is_closed: false,
-                    });
-                }
-            }
-        }
-        Err(e) => {
-            if is_account_closed(&client, &program_data_pda)
-                .await
-                .unwrap_or(false)
-            {
-                return Ok(ProgramOnchainState {
-                    authority: None,
-                    is_frozen: false,
-                    is_closed: true,
-                });
-            }
-            return Err(ApiError::Rpc(format!("fetch program data: {e}")));
-        }
-    }
-
-    let cfg = GetConfirmedSignaturesForAddress2Config {
-        limit: Some(1),
-        before: None,
-        until: None,
-        commitment: None,
-    };
-    let sigs = match client
-        .get_signatures_for_address_with_config(&program_data_pda, cfg)
-        .await
-    {
-        Ok(s) => s,
-        Err(_) => {
-            return Ok(ProgramOnchainState {
-                authority: None,
-                is_frozen: false,
-                is_closed: false,
-            })
-        }
-    };
-    let Some(latest) = sigs.first() else {
-        return Ok(ProgramOnchainState {
-            authority: None,
-            is_frozen: false,
-            is_closed: false,
-        });
-    };
-    let sig = Signature::from_str(&latest.signature)
-        .map_err(|e| ApiError::Rpc(format!("parse signature: {e}")))?;
-    let tx = client
-        .get_transaction_with_config(
-            &sig,
-            RpcTransactionConfig {
-                encoding: Some(UiTransactionEncoding::Json),
-                commitment: None,
-                max_supported_transaction_version: Some(0),
-            },
-        )
-        .await?;
-    if let EncodedTransaction::Json(ui) = tx.transaction.transaction {
-        if let UiMessage::Raw(raw) = &ui.message {
-            if raw.account_keys.iter().any(|k| k == SQUADS_PROGRAM_ID) {
-                let squads_idx = raw
-                    .account_keys
-                    .iter()
-                    .position(|k| k == SQUADS_PROGRAM_ID)
-                    .unwrap() as u8;
-                for ix in &raw.instructions {
-                    if ix.program_id_index == squads_idx && ix.data == SQUADS_AUTHORITY_IX_DATA {
-                        let aidx = ix.accounts[SQUADS_AUTHORITY_ACCOUNT_INDEX] as usize;
-                        return Ok(ProgramOnchainState {
-                            authority: Some(raw.account_keys[aidx].clone()),
-                            is_frozen: true,
-                            is_closed: false,
-                        });
-                    }
-                }
-            }
-            return Ok(ProgramOnchainState {
-                authority: Some(raw.account_keys[0].clone()),
-                is_frozen: true,
-                is_closed: false,
-            });
-        }
-    }
-    Ok(ProgramOnchainState {
-        authority: None,
-        is_frozen: false,
-        is_closed: false,
-    })
-}
-
-/// "Closed" covers both shapes the BPF loader leaves behind: account gone
-/// (`AccountNotFound`) and zero-lamport account owned by the system program.
-async fn is_account_closed(client: &RpcClient, pubkey: &Pubkey) -> Result<bool> {
-    match client.get_account(pubkey).await {
-        Ok(a) => Ok(a.lamports == 0 && a.owner == system_program::ID),
-        Err(e) => {
-            if e.to_string().contains("AccountNotFound") {
-                Ok(true)
-            } else {
-                Err(e.into())
-            }
-        }
-    }
 }
 
 /// Seeds: `("otter_verify", signer, program)`.
@@ -290,58 +382,6 @@ pub async fn get_otter_verify_params(
             }
         })
         .await
-}
-
-/// Shells out to `solana-verify get-program-hash`. Retries transient
-/// failures 3x with exponential backoff; "program appears to be closed"
-/// returns immediately since the caller wants to act on it.
-pub async fn get_on_chain_hash(program_id: &str) -> Result<String> {
-    let mut cmd = Command::new("solana-verify");
-    cmd.arg("get-program-hash")
-        .arg(program_id)
-        .arg("--url")
-        .arg(&CONFIG.rpc_url);
-
-    for attempt in 1..=3 {
-        match exec_hash_cmd(&mut cmd).await {
-            Ok(h) => return Ok(h),
-            Err(e) => {
-                if e.to_string().contains("Program appears to be closed") {
-                    return Err(e);
-                }
-                error!("attempt {}/3 get-program-hash failed: {}", attempt, e);
-                if attempt < 3 {
-                    tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(attempt))).await;
-                }
-            }
-        }
-    }
-    Err(ApiError::Rpc(
-        "get-program-hash failed after 3 attempts".into(),
-    ))
-}
-
-async fn exec_hash_cmd(cmd: &mut Command) -> Result<String> {
-    let out = cmd
-        .output()
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        if stderr.contains("Could not find program data") {
-            return Err(ApiError::NotFound(
-                "Program appears to be closed - program data account not found".into(),
-            ));
-        }
-        return Err(ApiError::Rpc(format!("command failed: {stderr}")));
-    }
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    stdout
-        .lines()
-        .last()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| ApiError::Internal("no hash in command output".into()))
 }
 
 /// Used after a build failure to distinguish "real failure" from "program
@@ -419,5 +459,26 @@ mod tests {
             Some("abc".into())
         );
         assert_eq!(extract_hash_with_prefix(s, "Missing:"), None);
+    }
+
+    #[test]
+    fn hash_strips_trailing_zeros() {
+        // Empty payload (all zeros) hashes the empty string.
+        let h = compute_program_hash(&[0u8; 16]);
+        assert_eq!(
+            h,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn hash_known_bytes() {
+        // sha256("hello") = 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+        let mut data = b"hello".to_vec();
+        data.extend_from_slice(&[0u8; 8]);
+        assert_eq!(
+            compute_program_hash(&data),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
     }
 }

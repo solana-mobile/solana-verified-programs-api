@@ -292,13 +292,12 @@ impl Db {
         Ok(row.as_ref().map(ProgramStateRow::from_row))
     }
 
-    /// Full refresh from the sweep. A `None` hash preserves the existing
-    /// value rather than clobbering it, so a failed hash fetch alongside a
-    /// successful authority lookup doesn't lose the previous hash.
+    /// Full refresh from a snapshot. A `None` hash on the snapshot preserves
+    /// the existing column rather than clobbering it, so a transient hash
+    /// fetch failure doesn't lose previously known data.
     pub async fn upsert_program_state(
         &self,
         program_id: &str,
-        on_chain_hash: Option<&str>,
         state: &ProgramOnchainState,
     ) -> Result<()> {
         sqlx::query(
@@ -313,31 +312,10 @@ impl Db {
                  last_checked  = NOW()",
         )
         .bind(program_id)
-        .bind(on_chain_hash)
+        .bind(state.executable_hash.as_deref())
         .bind(&state.authority)
         .bind(state.is_frozen)
         .bind(state.is_closed)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
-    }
-
-    /// Fast-path write of just the on-chain hash; leaves the other state
-    /// fields to the sweep.
-    pub async fn set_program_on_chain_hash(
-        &self,
-        program_id: &str,
-        on_chain_hash: &str,
-    ) -> Result<()> {
-        sqlx::query(
-            "INSERT INTO program_state (program_id, on_chain_hash, last_checked)
-             VALUES ($1, $2, NOW())
-             ON CONFLICT (program_id) DO UPDATE
-             SET on_chain_hash = EXCLUDED.on_chain_hash,
-                 last_checked = NOW()",
-        )
-        .bind(program_id)
-        .bind(on_chain_hash)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -445,14 +423,22 @@ impl Db {
             .collect())
     }
 
-    /// The `limit` program IDs the sweep should refresh next.
-    pub async fn oldest_program_states(&self, limit: i64) -> Result<Vec<String>> {
+    /// Every program ID the sweep should refresh: existing `program_state`
+    /// rows, plus completed builds (so a program with a build but no state
+    /// row yet — e.g. after a dropped webhook — gets bootstrapped).
+    /// Ordered oldest-first so a partial cycle still drains the staleness.
+    pub async fn sweep_program_ids(&self) -> Result<Vec<String>> {
         let ids: Vec<String> = sqlx::query_scalar(
-            "SELECT program_id FROM program_state
-             ORDER BY last_checked ASC
-             LIMIT $1",
+            "SELECT program_id FROM (
+                SELECT ps.program_id, ps.last_checked
+                FROM program_state ps
+                UNION
+                SELECT b.program_id, NULL::timestamptz AS last_checked
+                FROM (SELECT DISTINCT program_id FROM builds WHERE status = 'completed') b
+                WHERE NOT EXISTS (SELECT 1 FROM program_state ps WHERE ps.program_id = b.program_id)
+             ) q
+             ORDER BY last_checked ASC NULLS FIRST",
         )
-        .bind(limit)
         .fetch_all(&self.pool)
         .await?;
         Ok(ids)
