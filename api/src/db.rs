@@ -231,28 +231,6 @@ impl Db {
         Ok(row.as_ref().map(BuildRow::from_row))
     }
 
-    /// Prefers a build whose `executable_hash` matches `prefer_hash`, falling
-    /// back to the latest completed build of any hash. The fallback keeps
-    /// `/status` responses carrying repo/commit data after an upgrade.
-    pub async fn latest_completed_build(
-        &self,
-        program_id: &ProgramId,
-        prefer_hash: Option<&str>,
-    ) -> Result<Option<BuildRow>> {
-        let pid = program_id.as_str();
-        let row = sqlx::query(
-            "SELECT * FROM builds
-             WHERE program_id = $1 AND status = 'completed'
-             ORDER BY (executable_hash IS NOT DISTINCT FROM $2) DESC, completed_at DESC
-             LIMIT 1",
-        )
-        .bind(pid)
-        .bind(prefer_hash)
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row.as_ref().map(BuildRow::from_row))
-    }
-
     /// One row per signer — the signer's most recent completed claim for the program.
     pub async fn completed_builds_by_signer(
         &self,
@@ -281,6 +259,62 @@ impl Db {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.iter().map(BuildRow::from_row).collect())
+    }
+
+    /// Both halves of a `/status` response in one round trip: the cached
+    /// chain state plus the best matching build (same tie-break as
+    /// [`Db::latest_completed_build`]).
+    pub async fn status_row(
+        &self,
+        program_id: &ProgramId,
+    ) -> Result<Option<(ProgramStateRow, Option<BuildRow>)>> {
+        let pid = program_id.as_str();
+        let row = sqlx::query(
+            "SELECT
+                ps.program_id    AS ps_program_id,
+                ps.on_chain_hash AS ps_on_chain_hash,
+                ps.authority     AS ps_authority,
+                ps.is_frozen     AS ps_is_frozen,
+                ps.is_closed     AS ps_is_closed,
+                ps.last_checked  AS ps_last_checked,
+                b.*
+             FROM program_state ps
+             LEFT JOIN LATERAL (
+                SELECT *
+                FROM builds
+                WHERE program_id = ps.program_id AND status = 'completed'
+                ORDER BY (executable_hash IS NOT DISTINCT FROM ps.on_chain_hash) DESC,
+                         CASE signer
+                             WHEN '11111111111111111111111111111111' THEN 0
+                             WHEN '9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU' THEN 1
+                             WHEN 'CyJj5ejJAUveDXnLduJbkvwjxcmWJNqCuB9DR7AExrHn' THEN 1
+                             WHEN '5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r' THEN 1
+                             ELSE 2
+                         END ASC,
+                         completed_at DESC
+                LIMIT 1
+             ) b ON TRUE
+             WHERE ps.program_id = $1",
+        )
+        .bind(pid)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.as_ref().map(|r| {
+            let state = ProgramStateRow {
+                program_id: r.get("ps_program_id"),
+                on_chain_hash: r.get("ps_on_chain_hash"),
+                authority: r.get("ps_authority"),
+                is_frozen: r.get("ps_is_frozen"),
+                is_closed: r.get("ps_is_closed"),
+                last_checked: r.get("ps_last_checked"),
+            };
+            // LEFT JOIN LATERAL with LIMIT 1 → build columns are nullable.
+            let build = r
+                .try_get::<Uuid, _>("id")
+                .ok()
+                .map(|_| BuildRow::from_row(r));
+            (state, build)
+        }))
     }
 
     /// Cached on-chain state for a program.

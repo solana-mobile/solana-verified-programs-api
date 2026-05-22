@@ -13,6 +13,10 @@ pub struct Config {
     pub port: u16,
     #[serde(default = "default_sweep_interval")]
     pub sweep_interval_seconds: u64,
+    /// Skip the per-IP `tower_governor` layers — useful for local
+    /// benchmarking, never in production.
+    #[serde(default)]
+    pub disable_rate_limit: bool,
 }
 
 fn default_sweep_interval() -> u64 {

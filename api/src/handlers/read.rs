@@ -38,31 +38,28 @@ pub async fn status(
     Path(program_id): Path<ProgramId>,
 ) -> Json<ExtendedStatusResponse> {
     info!("/status {}", program_id);
-    let state = db
-        .get_program_state(&program_id.as_str())
-        .await
-        .ok()
-        .flatten();
-    let on_chain_hash = state
-        .as_ref()
-        .and_then(|s| s.on_chain_hash.clone())
-        .unwrap_or_default();
-    let (is_frozen, is_closed) = state
-        .as_ref()
-        .map(|s| (s.is_frozen, s.is_closed))
-        .unwrap_or((false, false));
-
-    let build = db
-        .latest_completed_build(&program_id, Some(&on_chain_hash))
-        .await
-        .ok()
-        .flatten();
-
+    let row = db.status_row(&program_id).await.ok().flatten();
+    let Some((state, build)) = row else {
+        return Json(ExtendedStatusResponse {
+            status: StatusResponse {
+                is_verified: false,
+                message: "On chain program not verified".into(),
+                on_chain_hash: String::new(),
+                executable_hash: String::new(),
+                repo_url: String::new(),
+                commit: String::new(),
+                last_verified_at: None,
+            },
+            is_frozen: false,
+            is_closed: false,
+        });
+    };
+    let on_chain_hash = state.on_chain_hash.unwrap_or_default();
     let resp = match build {
         Some(b) => {
             let is_verified = !on_chain_hash.is_empty()
                 && b.executable_hash.as_deref() == Some(on_chain_hash.as_str())
-                && !is_closed;
+                && !state.is_closed;
             ExtendedStatusResponse {
                 status: StatusResponse {
                     is_verified,
@@ -73,8 +70,8 @@ pub async fn status(
                     commit: b.commit_hash.unwrap_or_default(),
                     last_verified_at: b.completed_at.map(|t| t.naive_utc()),
                 },
-                is_frozen,
-                is_closed,
+                is_frozen: state.is_frozen,
+                is_closed: state.is_closed,
             }
         }
         None => ExtendedStatusResponse {
@@ -87,8 +84,8 @@ pub async fn status(
                 commit: String::new(),
                 last_verified_at: None,
             },
-            is_frozen,
-            is_closed,
+            is_frozen: state.is_frozen,
+            is_closed: state.is_closed,
         },
     };
     Json(resp)
