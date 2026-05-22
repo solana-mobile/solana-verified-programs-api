@@ -33,6 +33,7 @@ const SQUADS_PROGRAM_ID: &str = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
 const SQUADS_AUTHORITY_IX_DATA: &str = "ZTNTtVtnvbC";
 const SQUADS_AUTHORITY_ACCOUNT_INDEX: usize = 4;
 
+/// Authority + flags fetched from chain (the non-hash half of `program_state`).
 #[derive(Debug, Clone)]
 pub struct ProgramOnchainState {
     pub authority: Option<String>,
@@ -57,6 +58,7 @@ pub struct OtterBuildParams {
 }
 
 impl OtterBuildParams {
+    /// Whether the claim asks for `cargo build-bpf` instead of `build-sbf`.
     pub fn bpf(&self) -> bool {
         self.args.iter().any(|a| a == "--bpf")
     }

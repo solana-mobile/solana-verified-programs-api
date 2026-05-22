@@ -11,6 +11,7 @@ use tracing::error;
 const LOGS_DIR: &str = "/logs";
 const MAINNET_RPC: &str = "https://api.mainnet-beta.solana.com";
 
+/// Persists `stderr` and `stdout` for a build under `file_id`.
 pub async fn write(file_id: &str, stderr: &str, stdout: &str) -> Result<()> {
     let dir = Path::new(LOGS_DIR);
     if !dir.exists() {
@@ -25,8 +26,8 @@ pub async fn write(file_id: &str, stderr: &str, stdout: &str) -> Result<()> {
     Ok(())
 }
 
-/// Returns the stub `{ error }` shape when both files are empty — matches
-/// the previous handler's wire format.
+/// Reads back the log pair for a build as a JSON object. Returns the stub
+/// `{ error }` shape when both files are empty.
 pub async fn read(file_id: &str) -> Value {
     let stderr = fs::read_to_string(log_path(file_id, "err"))
         .await

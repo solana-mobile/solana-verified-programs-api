@@ -52,10 +52,12 @@ const LANDING_HTML: &str = r#"<!doctype html>
 </html>
 "#;
 
+/// `GET /` — static HTML landing page.
 pub async fn landing() -> Html<&'static str> {
     Html(LANDING_HTML)
 }
 
+/// `GET /api` — machine-readable endpoint list.
 pub async fn index() -> Json<Value> {
     let v = INDEX_JSON.get_or_init(|| {
         json!({
@@ -81,6 +83,7 @@ pub async fn index() -> Json<Value> {
     Json(v.clone())
 }
 
+/// `GET /health` — overall health: DB connectivity plus sweep liveness.
 pub async fn health(State(db): State<Db>) -> (StatusCode, Json<Value>) {
     let db_ok = db.ping().await.is_ok();
     let last = db.last_sweep_at().await.ok().flatten();

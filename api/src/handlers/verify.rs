@@ -47,6 +47,7 @@ pub struct VerifyWithSignerRequest {
     pub webhook_url: Option<WebhookUrl>,
 }
 
+/// `POST /verify` — kick off an async build, return its job UUID.
 pub async fn verify_async(
     State(db): State<Db>,
     Json(req): Json<VerifyRequest>,
@@ -58,6 +59,7 @@ pub async fn verify_async(
     start_async(db, build_params, webhook).await
 }
 
+/// `POST /verify-with-signer` — async build pinned to a specific signer.
 pub async fn verify_with_signer(
     State(db): State<Db>,
     Json(req): Json<VerifyWithSignerRequest>,
@@ -72,9 +74,11 @@ pub async fn verify_with_signer(
     start_async(db, build_params, webhook).await
 }
 
-/// Returns a [`StatusResponse`] on a fresh/completed build, or a
-/// [`VerifyResponse`] when an in-progress duplicate is found — those shapes
-/// are distinct, hence the `Value` return.
+/// `POST /verify_sync` — runs the build inline.
+///
+/// Returns a [`StatusResponse`] for a fresh/completed build, or a
+/// [`VerifyResponse`] when an in-progress duplicate is found — distinct
+/// shapes, hence the `Value` return.
 pub async fn verify_sync(
     State(db): State<Db>,
     Json(req): Json<VerifyRequest>,

@@ -14,6 +14,7 @@ use tracing::{error, info};
 const BATCH_SIZE: i64 = 200;
 const CONCURRENCY: usize = 16;
 
+/// Spawns the sweep task. Runs for the process's lifetime.
 pub fn spawn(db: Db) {
     tokio::spawn(async move {
         let interval = Duration::from_secs(CONFIG.sweep_interval_seconds);

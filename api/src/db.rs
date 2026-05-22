@@ -23,6 +23,7 @@ pub struct Db {
 }
 
 impl Db {
+    /// Opens a bounded connection pool against `url`.
     pub async fn connect(url: &str) -> Result<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(20)
@@ -32,6 +33,7 @@ impl Db {
         Ok(Self { pool })
     }
 
+    /// Runs all pending embedded migrations.
     pub async fn migrate(&self) -> Result<()> {
         sqlx::migrate!("./migrations")
             .run(&self.pool)
@@ -41,7 +43,7 @@ impl Db {
         Ok(())
     }
 
-    /// Cheap connectivity check for the health endpoint.
+    /// `SELECT 1` for the health endpoint.
     pub async fn ping(&self) -> Result<()> {
         sqlx::query("SELECT 1").execute(&self.pool).await?;
         Ok(())
@@ -131,6 +133,7 @@ pub struct NewBuild {
 }
 
 impl Db {
+    /// Inserts an `in_progress` build row and returns its UUID.
     pub async fn insert_build(&self, b: &NewBuild) -> Result<Uuid> {
         let id = Uuid::new_v4();
         sqlx::query(
@@ -157,6 +160,7 @@ impl Db {
         Ok(id)
     }
 
+    /// Transitions a build to `completed` and records its executable hash.
     pub async fn mark_build_completed(&self, id: Uuid, executable_hash: &str) -> Result<()> {
         sqlx::query(
             "UPDATE builds SET status = $1, executable_hash = $2, completed_at = NOW()
@@ -170,6 +174,7 @@ impl Db {
         Ok(())
     }
 
+    /// Transitions a build to `failed` with the given error message.
     pub async fn mark_build_failed(&self, id: Uuid, error: &str) -> Result<()> {
         sqlx::query(
             "UPDATE builds SET status = $1, error_message = $2, completed_at = NOW()
@@ -183,6 +188,7 @@ impl Db {
         Ok(())
     }
 
+    /// Fetches a build by id.
     pub async fn get_build(&self, id: Uuid) -> Result<Option<BuildRow>> {
         let row = sqlx::query("SELECT * FROM builds WHERE id = $1")
             .bind(id)
@@ -247,7 +253,7 @@ impl Db {
         Ok(row.as_ref().map(BuildRow::from_row))
     }
 
-    /// One row per signer — the signer's most recent completed claim.
+    /// One row per signer — the signer's most recent completed claim for the program.
     pub async fn completed_builds_by_signer(
         &self,
         program_id: &ProgramId,
@@ -264,6 +270,7 @@ impl Db {
         Ok(rows.iter().map(BuildRow::from_row).collect())
     }
 
+    /// Every completed build with this executable hash.
     pub async fn builds_by_executable_hash(&self, hash: &str) -> Result<Vec<BuildRow>> {
         let rows = sqlx::query(
             "SELECT * FROM builds
@@ -276,6 +283,7 @@ impl Db {
         Ok(rows.iter().map(BuildRow::from_row).collect())
     }
 
+    /// Cached on-chain state for a program.
     pub async fn get_program_state(&self, program_id: &str) -> Result<Option<ProgramStateRow>> {
         let row = sqlx::query("SELECT * FROM program_state WHERE program_id = $1")
             .bind(program_id)
@@ -284,9 +292,9 @@ impl Db {
         Ok(row.as_ref().map(ProgramStateRow::from_row))
     }
 
-    /// A `None` hash preserves the existing value rather than clobbering it,
-    /// so a failed hash fetch alongside a successful authority lookup
-    /// doesn't lose the previous hash.
+    /// Full refresh from the sweep. A `None` hash preserves the existing
+    /// value rather than clobbering it, so a failed hash fetch alongside a
+    /// successful authority lookup doesn't lose the previous hash.
     pub async fn upsert_program_state(
         &self,
         program_id: &str,
@@ -314,8 +322,8 @@ impl Db {
         Ok(())
     }
 
-    /// Single-field write. Leaves authority/frozen/closed alone for the
-    /// sweep to manage.
+    /// Fast-path write of just the on-chain hash; leaves the other state
+    /// fields to the sweep.
     pub async fn set_program_on_chain_hash(
         &self,
         program_id: &str,
@@ -335,6 +343,7 @@ impl Db {
         Ok(())
     }
 
+    /// Records a program as closed and clears its authority.
     pub async fn mark_closed(&self, program_id: &str) -> Result<()> {
         sqlx::query(
             "INSERT INTO program_state (program_id, is_closed, last_checked)
@@ -348,7 +357,8 @@ impl Db {
         Ok(())
     }
 
-    /// `search` is the raw needle (empty disables filtering), matched against
+    /// One page of currently-verified program IDs plus the total count.
+    /// `search` (empty disables filtering) is matched against both
     /// `program_id` and `repository`.
     pub async fn verified_programs_page(
         &self,
@@ -398,6 +408,8 @@ impl Db {
         Ok((ids, total))
     }
 
+    /// Latest completed build paired with its state, for every program
+    /// currently verified and not closed/frozen.
     pub async fn verified_programs_with_state(&self) -> Result<Vec<(BuildRow, ProgramStateRow)>> {
         let rows = sqlx::query(
             "SELECT b.*, ps.program_id as ps_program_id, ps.on_chain_hash as ps_on_chain_hash,
@@ -433,6 +445,7 @@ impl Db {
             .collect())
     }
 
+    /// The `limit` program IDs the sweep should refresh next.
     pub async fn oldest_program_states(&self, limit: i64) -> Result<Vec<String>> {
         let ids: Vec<String> = sqlx::query_scalar(
             "SELECT program_id FROM program_state
@@ -454,6 +467,7 @@ impl Db {
         Ok(v)
     }
 
+    /// Records the on-disk log filename for a failed build.
     pub async fn insert_build_log(
         &self,
         build_id: Uuid,
@@ -472,6 +486,7 @@ impl Db {
         Ok(())
     }
 
+    /// Looks up the on-disk log filename for a build.
     pub async fn get_build_log_file(&self, build_id: Uuid) -> Result<Option<String>> {
         let file: Option<String> = sqlx::query_scalar(
             "SELECT file_name FROM build_logs

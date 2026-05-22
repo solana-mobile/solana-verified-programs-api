@@ -32,6 +32,7 @@ pub struct ListQuery {
     pub search: Option<String>,
 }
 
+/// `GET /status/:program_id` — current verification status for one program.
 pub async fn status(
     State(db): State<Db>,
     Path(program_id): Path<ProgramId>,
@@ -93,6 +94,7 @@ pub async fn status(
     Json(resp)
 }
 
+/// `GET /status-all/:program_id` — one entry per signer that has claimed the program.
 pub async fn status_all(
     State(db): State<Db>,
     Path(program_id): Path<ProgramId>,
@@ -138,6 +140,7 @@ fn build_with_signer(
     }
 }
 
+/// `GET /resolve-hash/:hash` — every completed build that produced the hash.
 pub async fn resolve_hash(
     State(db): State<Db>,
     Path(hash): Path<String>,
@@ -174,6 +177,7 @@ pub async fn resolve_hash(
     }))
 }
 
+/// `GET /job/:job_id` — async build status.
 pub async fn job(
     State(db): State<Db>,
     Path(job_id): Path<String>,
@@ -218,6 +222,7 @@ pub async fn job(
     Ok(Json(resp))
 }
 
+/// `GET /logs/:build_id` — stdout/stderr from a build.
 pub async fn build_logs(State(db): State<Db>, Path(build_id): Path<String>) -> Result<Json<Value>> {
     let id = Uuid::from_str(&build_id)
         .map_err(|_| ApiError::BadRequest("Invalid build id (expected UUID)".into()))?;
@@ -229,6 +234,7 @@ pub async fn build_logs(State(db): State<Db>, Path(build_id): Path<String>) -> R
     Ok(Json(logs::read(&file).await))
 }
 
+/// `GET /verified-programs` — first page of the verified-programs list.
 pub async fn verified_programs(
     State(db): State<Db>,
     Query(q): Query<ListQuery>,
@@ -236,6 +242,7 @@ pub async fn verified_programs(
     verified_programs_paginated(State(db), Path(1), Query(q)).await
 }
 
+/// `GET /verified-programs/:page` — paginated verified-programs list.
 pub async fn verified_programs_paginated(
     State(db): State<Db>,
     Path(page): Path<i64>,
@@ -289,6 +296,7 @@ pub async fn verified_programs_paginated(
     }
 }
 
+/// `GET /verified-programs-status` — verification status for every verified program.
 pub async fn verified_programs_status(
     State(db): State<Db>,
 ) -> (StatusCode, Json<VerifiedProgramsStatusListResponse>) {
@@ -353,6 +361,7 @@ fn status_message(is_verified: bool) -> String {
     }
 }
 
+/// `GET /health/background-jobs` — last sweep timestamp + liveness verdict.
 pub async fn background_job_status(
     State(db): State<Db>,
 ) -> (StatusCode, Json<BackgroundJobHealth>) {

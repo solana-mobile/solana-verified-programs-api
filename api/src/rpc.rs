@@ -6,12 +6,15 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, warn};
 
+/// Round-robin pool of Solana RPC clients.
 pub struct RpcManager {
     urls: Vec<String>,
     cursor: RwLock<usize>,
 }
 
 impl RpcManager {
+    /// Builds a manager from `RPC_URLS` (comma-separated), falling back to
+    /// a single-element list containing `RPC_URL`.
     pub fn new() -> Self {
         let urls: Vec<String> = match &CONFIG.rpc_urls {
             Some(joined) => joined
@@ -32,6 +35,7 @@ impl RpcManager {
         }
     }
 
+    /// A client for the currently-selected URL.
     pub async fn client(&self) -> Arc<RpcClient> {
         let i = *self.cursor.read().await;
         Arc::new(RpcClient::new(self.urls[i].clone()))
@@ -84,6 +88,7 @@ fn is_rate_limited(err: &ApiError) -> bool {
 
 static RPC: once_cell::sync::Lazy<RpcManager> = once_cell::sync::Lazy::new(RpcManager::new);
 
+/// The process-wide [`RpcManager`].
 pub fn rpc() -> &'static RpcManager {
     &RPC
 }

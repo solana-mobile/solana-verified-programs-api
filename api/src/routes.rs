@@ -18,6 +18,7 @@ use tower_http::{
 };
 use tracing::Span;
 
+/// Wires every route, middleware, and rate limiter onto a fresh [`Router`].
 pub fn build(db: Db) -> Router {
     let rate_limit_per_ip = |period_secs: u64, burst: u32| {
         let cfg = Box::leak(Box::new(
