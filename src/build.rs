@@ -110,11 +110,10 @@ fn build_command(p: &NewBuild) -> Command {
     if let Some(a) = &p.arch {
         cmd.arg("--arch").arg(a);
     }
-    if let Some(args) = &p.cargo_args {
-        if !args.is_empty() {
+    if let Some(args) = &p.cargo_args
+        && !args.is_empty() {
             cmd.arg("--").args(args);
         }
-    }
     cmd
 }
 
@@ -155,13 +154,11 @@ pub async fn execute(build_id: Uuid, params: NewBuild, db: Db, webhook_url: Opti
 
     if let Err(e) = &result {
         // If the upgrade buffer is missing, treat the program as closed.
-        if let Ok(pid) = Pubkey::from_str(&program_id) {
-            if crate::onchain::is_program_buffer_missing(&pid).await {
-                if let Err(err) = db.mark_closed(&program_id).await {
+        if let Ok(pid) = Pubkey::from_str(&program_id)
+            && crate::onchain::is_program_buffer_missing(&pid).await
+                && let Err(err) = db.mark_closed(&program_id).await {
                     error!("mark_closed after failed build: {}", err);
                 }
-            }
-        }
         error!("build {} failed: {}", build_id, e);
     }
 
@@ -194,11 +191,10 @@ pub async fn finalize_completed(
             return;
         }
     };
-    if let Some(snap) = snapshots.get(&pid) {
-        if let Err(e) = db.upsert_program_state(program_id, snap).await {
+    if let Some(snap) = snapshots.get(&pid)
+        && let Err(e) = db.upsert_program_state(program_id, snap).await {
             error!("upsert state {}: {}", program_id, e);
         }
-    }
 }
 
 async fn post_webhook(url: &str, payload: &VerificationWebhookPayload) {

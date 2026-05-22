@@ -1,5 +1,10 @@
 //! Shared verification helpers and utilities
 //! Contains common logic used across different verification endpoints
+//!
+//! `HandlerError` is `(StatusCode, Json<ApiResponse>)` — large by design,
+//! since `ApiResponse` is the full untagged response enum. Suppressing the
+//! `clippy::result_large_err` lint module-wide rather than boxing it.
+#![allow(clippy::result_large_err)]
 
 use crate::{
     db::{Db, NewBuild},

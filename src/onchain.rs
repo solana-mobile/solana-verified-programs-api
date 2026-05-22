@@ -284,11 +284,10 @@ pub async fn get_program_state(program_id: &Pubkey) -> Result<ProgramOnchainStat
         .await?
         .remove(program_id)
         .unwrap_or_else(ProgramOnchainState::empty);
-    if state.is_frozen && state.authority.is_none() && !state.is_closed {
-        if let Ok(Some(auth)) = recover_burned_authority(program_id).await {
+    if state.is_frozen && state.authority.is_none() && !state.is_closed
+        && let Ok(Some(auth)) = recover_burned_authority(program_id).await {
             state.authority = Some(auth);
         }
-    }
     Ok(state)
 }
 
@@ -322,8 +321,8 @@ async fn recover_burned_authority(program_id: &Pubkey) -> Result<Option<String>>
                     },
                 )
                 .await?;
-            if let EncodedTransaction::Json(ui) = tx.transaction.transaction {
-                if let UiMessage::Raw(raw) = &ui.message {
+            if let EncodedTransaction::Json(ui) = tx.transaction.transaction
+                && let UiMessage::Raw(raw) = &ui.message {
                     if let Some(squads_idx) =
                         raw.account_keys.iter().position(|k| k == SQUADS_PROGRAM_ID)
                     {
@@ -339,7 +338,6 @@ async fn recover_burned_authority(program_id: &Pubkey) -> Result<Option<String>>
                     }
                     return Ok(Some(raw.account_keys[0].clone()));
                 }
-            }
             Ok(None)
         })
         .await
@@ -380,13 +378,11 @@ pub async fn get_otter_verify_params(
                         ))),
                     };
                 }
-                if let Some(authority_str) = authority {
-                    if let Ok(auth) = Pubkey::from_str(&authority_str) {
-                        if let Ok(p) = get_otter_pda(&client, &auth, &program).await {
+                if let Some(authority_str) = authority
+                    && let Ok(auth) = Pubkey::from_str(&authority_str)
+                        && let Ok(p) = get_otter_pda(&client, &auth, &program).await {
                             return Ok((p, auth.to_string()));
                         }
-                    }
-                }
                 for s in SIGNER_KEYS.iter() {
                     if let Ok(p) = get_otter_pda(&client, s, &program).await {
                         return Ok((p, s.to_string()));
