@@ -19,7 +19,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use tracing::{error, info, warn};
 
-pub async fn handle_pda_updates_creations(
+pub async fn pda(
     State(db): State<Db>,
     headers: HeaderMap,
     Json(payload): Json<Vec<Value>>,

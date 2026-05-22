@@ -8,7 +8,7 @@ use crate::{
 };
 use axum::{extract::State, http::StatusCode, Json};
 
-pub async fn get_verified_programs_status(
+pub async fn all(
     State(db): State<Db>,
 ) -> (StatusCode, Json<VerifiedProgramsStatusListResponse>) {
     match db.currently_verified_builds().await {

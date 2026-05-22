@@ -30,7 +30,7 @@ pub struct VerifyWithSignerRequest {
     pub webhook_url: Option<WebhookUrl>,
 }
 
-pub async fn process_async_verification(
+pub async fn verify(
     State(db): State<Db>,
     Json(req): Json<VerifyRequest>,
 ) -> Result<(StatusCode, Json<VerifyResponse>)> {
@@ -41,7 +41,7 @@ pub async fn process_async_verification(
     start_async(db, build_params, webhook).await
 }
 
-pub async fn process_async_verification_with_signer(
+pub async fn verify_with_signer(
     State(db): State<Db>,
     Json(req): Json<VerifyWithSignerRequest>,
 ) -> Result<(StatusCode, Json<VerifyResponse>)> {

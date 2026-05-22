@@ -3,7 +3,7 @@ use axum::{extract::State, http::StatusCode, Json};
 use serde_json::{json, Value};
 
 /// `GET /health` — overall liveness: DB connectivity plus sweep recency.
-pub async fn health_check(State(db): State<Db>) -> (StatusCode, Json<Value>) {
+pub async fn health(State(db): State<Db>) -> (StatusCode, Json<Value>) {
     let db_ok = db.ping().await.is_ok();
     let last = db.last_sweep_at().await.ok().flatten();
     let now = chrono::Utc::now();
@@ -33,7 +33,7 @@ pub async fn health_check(State(db): State<Db>) -> (StatusCode, Json<Value>) {
 }
 
 /// `GET /health/background-jobs` — last sweep timestamp + liveness verdict.
-pub async fn background_job_status(
+pub async fn background_jobs(
     State(db): State<Db>,
 ) -> (StatusCode, Json<BackgroundJobHealth>) {
     let last = db.last_sweep_at().await.ok().flatten();

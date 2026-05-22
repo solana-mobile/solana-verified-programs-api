@@ -13,7 +13,7 @@ use axum::{
 use std::str::FromStr;
 use uuid::Uuid;
 
-pub async fn get_job_status(
+pub async fn status(
     State(db): State<Db>,
     Path(job_id): Path<String>,
 ) -> Result<Json<JobVerificationResponse>> {

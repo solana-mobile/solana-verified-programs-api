@@ -58,54 +58,36 @@ pub fn build(db: Db) -> Router {
 
     let verify_group: Router<Db> = maybe_rl!(
         Router::new()
-            .route("/verify", post(async_verify::process_async_verification))
-            .route(
-                "/verify-with-signer",
-                post(async_verify::process_async_verification_with_signer),
-            )
-            .route("/verify_sync", post(sync_verify::process_sync_verification)),
+            .route("/verify", post(async_verify::verify))
+            .route("/verify-with-signer", post(async_verify::verify_with_signer))
+            .route("/verify_sync", post(sync_verify::verify_sync)),
         30,
         1
     );
     let webhook_group: Router<Db> = maybe_rl!(
         Router::new()
-            .route("/unverify", post(unverify::handle_unverify))
-            .route("/pda", post(pda_worker::handle_pda_updates_creations)),
+            .route("/unverify", post(unverify::unverify))
+            .route("/pda", post(pda_worker::pda)),
         1,
         100
     );
     let read_group: Router<Db> = maybe_rl!(
         Router::new()
-            .route(
-                "/status/:address",
-                get(verification_status::get_verification_status),
-            )
-            .route(
-                "/status-all/:address",
-                get(verification_status::get_verification_status_all),
-            )
-            .route(
-                "/resolve-hash/:hash",
-                get(resolve_hash::get_builds_for_hash),
-            )
-            .route("/job/:job_id", get(job_status::get_job_status))
-            .route("/logs/:build_id", get(logs::get_build_logs))
-            .route(
-                "/verified-programs",
-                get(verified_programs_list::get_verified_programs_list),
-            )
+            .route("/status/:address", get(verification_status::status))
+            .route("/status-all/:address", get(verification_status::status_all))
+            .route("/resolve-hash/:hash", get(resolve_hash::resolve))
+            .route("/job/:job_id", get(job_status::status))
+            .route("/logs/:build_id", get(logs::fetch))
+            .route("/verified-programs", get(verified_programs_list::list))
             .route(
                 "/verified-programs/:page",
-                get(verified_programs_list::get_verified_programs_list_paginated),
+                get(verified_programs_list::paginated),
             )
             .route(
                 "/verified-programs-status",
-                get(verified_programs_status::get_verified_programs_status),
+                get(verified_programs_status::all),
             )
-            .route(
-                "/health/background-jobs",
-                get(health::background_job_status),
-            ),
+            .route("/health/background-jobs", get(health::background_jobs)),
         1,
         100
     );
@@ -114,9 +96,9 @@ pub fn build(db: Db) -> Router {
         .merge(verify_group)
         .merge(webhook_group)
         .merge(read_group)
-        .route("/", get(index::landing_page))
-        .route("/api", get(index::index))
-        .route("/health", get(health::health_check))
+        .route("/", get(index::landing))
+        .route("/api", get(index::endpoints))
+        .route("/health", get(health::health))
         .layer(cors(Method::GET))
         .layer(CompressionLayer::new().zstd(true))
         .layer(trace)

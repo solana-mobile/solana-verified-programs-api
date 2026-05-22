@@ -16,7 +16,7 @@ use axum::{
     Json,
 };
 
-pub async fn get_verification_status(
+pub async fn status(
     State(db): State<Db>,
     Path(program_id): Path<ProgramId>,
 ) -> Json<ExtendedStatusResponse> {
@@ -72,7 +72,7 @@ pub async fn get_verification_status(
     })
 }
 
-pub async fn get_verification_status_all(
+pub async fn status_all(
     State(db): State<Db>,
     Path(program_id): Path<ProgramId>,
 ) -> Result<Json<Vec<VerificationResponseWithSigner>>> {

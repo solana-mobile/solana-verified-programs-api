@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use std::str::FromStr;
 use uuid::Uuid;
 
-pub async fn get_build_logs(
+pub async fn fetch(
     State(db): State<Db>,
     Path(build_id): Path<String>,
 ) -> Result<Json<Value>> {

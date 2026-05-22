@@ -11,7 +11,7 @@ use axum::{
     Json,
 };
 
-pub async fn get_builds_for_hash(
+pub async fn resolve(
     State(db): State<Db>,
     Path(hash): Path<String>,
 ) -> Result<Json<ResolveHashResponse>> {

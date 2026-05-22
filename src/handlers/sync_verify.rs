@@ -17,7 +17,7 @@ use tracing::debug;
 /// Returns a [`StatusResponse`] for a fresh/completed build, or a
 /// [`VerifyResponse`] when an in-progress duplicate is found — those shapes
 /// are distinct, hence the `Value` return.
-pub async fn process_sync_verification(
+pub async fn verify_sync(
     State(db): State<Db>,
     Json(req): Json<VerifyRequest>,
 ) -> Result<(StatusCode, Json<Value>)> {

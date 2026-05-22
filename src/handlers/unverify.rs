@@ -14,7 +14,7 @@ use tracing::{error, warn};
 
 const UPGRADE_INSTRUCTION_DATA: &str = "5Sxr3";
 
-pub async fn handle_unverify(
+pub async fn unverify(
     State(db): State<Db>,
     headers: HeaderMap,
     Json(payload): Json<Vec<Value>>,

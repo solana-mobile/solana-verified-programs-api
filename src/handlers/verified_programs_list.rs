@@ -19,14 +19,14 @@ pub struct ListQuery {
     pub search: Option<String>,
 }
 
-pub async fn get_verified_programs_list(
+pub async fn list(
     State(db): State<Db>,
     Query(q): Query<ListQuery>,
 ) -> (StatusCode, Json<VerifiedProgramListResponse>) {
-    get_verified_programs_list_paginated(State(db), Path(1), Query(q)).await
+    paginated(State(db), Path(1), Query(q)).await
 }
 
-pub async fn get_verified_programs_list_paginated(
+pub async fn paginated(
     State(db): State<Db>,
     Path(page): Path<i64>,
     Query(q): Query<ListQuery>,
