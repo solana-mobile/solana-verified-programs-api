@@ -229,92 +229,34 @@ impl Db {
         .await?)
     }
 
-    /// Both halves of a `/status` response in one round trip: the cached
-    /// chain state plus the best matching build. Tie-break: prefer the build
-    /// whose `executable_hash` matches the on-chain hash, then prefer
-    /// well-known signers (matches the legacy API's selection), then prefer
-    /// most-recently completed.
-    pub async fn status_row(
+    /// Most recent completed build for the program. When `prefer_hash` is
+    /// set, prefers a build whose `executable_hash` matches; falls back to
+    /// the latest of any hash. Well-known signers (the legacy DEFAULT_SIGNER
+    /// + SIGNER_KEYS) win the tie-break so responses match the legacy API.
+    pub async fn best_build(
         &self,
         program_id: &ProgramId,
-    ) -> Result<Option<(ProgramStateRow, Option<BuildRow>)>> {
-        let row = sqlx::query!(
-            r#"
-            SELECT
-                ps.program_id    AS "ps_program_id!",
-                ps.on_chain_hash AS "ps_on_chain_hash",
-                ps.authority     AS "ps_authority",
-                ps.is_frozen     AS "ps_is_frozen!",
-                ps.is_closed     AS "ps_is_closed!",
-                ps.last_checked  AS "ps_last_checked!",
-                b.id                AS "b_id?",
-                b.repository        AS "b_repository?",
-                b.commit_hash       AS "b_commit_hash?",
-                b.program_id        AS "b_program_id?",
-                b.lib_name          AS "b_lib_name?",
-                b.base_docker_image AS "b_base_docker_image?",
-                b.mount_path        AS "b_mount_path?",
-                b.cargo_args        AS "b_cargo_args?: Vec<String>",
-                b.bpf_flag          AS "b_bpf_flag?",
-                b.arch              AS "b_arch?",
-                b.signer            AS "b_signer?",
-                b.status            AS "b_status?",
-                b.executable_hash   AS "b_executable_hash?",
-                b.error_message     AS "b_error_message?",
-                b.created_at        AS "b_created_at?",
-                b.completed_at      AS "b_completed_at?"
-            FROM program_state ps
-            LEFT JOIN LATERAL (
-                SELECT *
-                FROM builds
-                WHERE program_id = ps.program_id AND status = 'completed'
-                ORDER BY (executable_hash IS NOT DISTINCT FROM ps.on_chain_hash) DESC,
-                         CASE signer
-                             WHEN '11111111111111111111111111111111' THEN 0
-                             WHEN '9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU' THEN 1
-                             WHEN 'CyJj5ejJAUveDXnLduJbkvwjxcmWJNqCuB9DR7AExrHn' THEN 1
-                             WHEN '5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r' THEN 1
-                             ELSE 2
-                         END ASC,
-                         completed_at DESC
-                LIMIT 1
-            ) b ON TRUE
-            WHERE ps.program_id = $1
-            "#,
+        prefer_hash: Option<&str>,
+    ) -> Result<Option<BuildRow>> {
+        Ok(sqlx::query_as!(
+            BuildRow,
+            "SELECT * FROM builds
+             WHERE program_id = $1 AND status = 'completed'
+             ORDER BY (executable_hash IS NOT DISTINCT FROM $2) DESC,
+                      CASE signer
+                          WHEN '11111111111111111111111111111111' THEN 0
+                          WHEN '9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU' THEN 1
+                          WHEN 'CyJj5ejJAUveDXnLduJbkvwjxcmWJNqCuB9DR7AExrHn' THEN 1
+                          WHEN '5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r' THEN 1
+                          ELSE 2
+                      END ASC,
+                      completed_at DESC
+             LIMIT 1",
             program_id.as_str(),
+            prefer_hash,
         )
         .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(|r| {
-            let state = ProgramStateRow {
-                program_id: r.ps_program_id,
-                on_chain_hash: r.ps_on_chain_hash,
-                authority: r.ps_authority,
-                is_frozen: r.ps_is_frozen,
-                is_closed: r.ps_is_closed,
-                last_checked: r.ps_last_checked,
-            };
-            let build = r.b_id.map(|id| BuildRow {
-                id,
-                repository: r.b_repository.unwrap_or_default(),
-                commit_hash: r.b_commit_hash,
-                program_id: r.b_program_id.unwrap_or_default(),
-                lib_name: r.b_lib_name,
-                base_docker_image: r.b_base_docker_image,
-                mount_path: r.b_mount_path,
-                cargo_args: r.b_cargo_args,
-                bpf_flag: r.b_bpf_flag.unwrap_or(false),
-                arch: r.b_arch,
-                signer: r.b_signer,
-                status: r.b_status.unwrap_or_default(),
-                executable_hash: r.b_executable_hash,
-                error_message: r.b_error_message,
-                created_at: r.b_created_at.unwrap_or_else(Utc::now),
-                completed_at: r.b_completed_at,
-            });
-            (state, build)
-        }))
+        .await?)
     }
 
     /// Cached on-chain state for a program.
@@ -422,81 +364,25 @@ impl Db {
         Ok((ids, total))
     }
 
-    /// Latest completed build paired with its state, for every program
-    /// currently verified and not closed/frozen.
-    pub async fn verified_programs_with_state(&self) -> Result<Vec<(BuildRow, ProgramStateRow)>> {
-        let rows = sqlx::query!(
-            r#"
-            SELECT
-                b.id                AS "b_id!",
-                b.repository        AS "b_repository!",
-                b.commit_hash       AS "b_commit_hash",
-                b.program_id        AS "b_program_id!",
-                b.lib_name          AS "b_lib_name",
-                b.base_docker_image AS "b_base_docker_image",
-                b.mount_path        AS "b_mount_path",
-                b.cargo_args        AS "b_cargo_args: Vec<String>",
-                b.bpf_flag          AS "b_bpf_flag!",
-                b.arch              AS "b_arch",
-                b.signer            AS "b_signer",
-                b.status            AS "b_status!",
-                b.executable_hash   AS "b_executable_hash",
-                b.error_message     AS "b_error_message",
-                b.created_at        AS "b_created_at!",
-                b.completed_at      AS "b_completed_at",
-                ps.program_id    AS "ps_program_id!",
-                ps.on_chain_hash AS "ps_on_chain_hash",
-                ps.authority     AS "ps_authority",
-                ps.is_frozen     AS "ps_is_frozen!",
-                ps.is_closed     AS "ps_is_closed!",
-                ps.last_checked  AS "ps_last_checked!"
-            FROM (
-                SELECT DISTINCT ON (program_id) *
-                FROM builds
-                WHERE status = 'completed' AND executable_hash IS NOT NULL
-                ORDER BY program_id, completed_at DESC
-            ) b
-            JOIN program_state ps ON ps.program_id = b.program_id
-            WHERE b.executable_hash = ps.on_chain_hash
-              AND NOT ps.is_closed
-              AND NOT ps.is_frozen
-            "#,
+    /// Latest completed build for every program that's currently verified
+    /// (build hash matches on-chain hash) and not closed/frozen. The join
+    /// guarantees `executable_hash == program_state.on_chain_hash`, so the
+    /// state row carries no info the build doesn't already.
+    pub async fn currently_verified_builds(&self) -> Result<Vec<BuildRow>> {
+        Ok(sqlx::query_as!(
+            BuildRow,
+            "SELECT DISTINCT ON (b.program_id) b.*
+             FROM builds b
+             JOIN program_state ps ON ps.program_id = b.program_id
+             WHERE b.status = 'completed'
+               AND b.executable_hash IS NOT NULL
+               AND b.executable_hash = ps.on_chain_hash
+               AND NOT ps.is_closed
+               AND NOT ps.is_frozen
+             ORDER BY b.program_id, b.completed_at DESC",
         )
         .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| {
-                let build = BuildRow {
-                    id: r.b_id,
-                    repository: r.b_repository,
-                    commit_hash: r.b_commit_hash,
-                    program_id: r.b_program_id,
-                    lib_name: r.b_lib_name,
-                    base_docker_image: r.b_base_docker_image,
-                    mount_path: r.b_mount_path,
-                    cargo_args: r.b_cargo_args,
-                    bpf_flag: r.b_bpf_flag,
-                    arch: r.b_arch,
-                    signer: r.b_signer,
-                    status: r.b_status,
-                    executable_hash: r.b_executable_hash,
-                    error_message: r.b_error_message,
-                    created_at: r.b_created_at,
-                    completed_at: r.b_completed_at,
-                };
-                let state = ProgramStateRow {
-                    program_id: r.ps_program_id,
-                    on_chain_hash: r.ps_on_chain_hash,
-                    authority: r.ps_authority,
-                    is_frozen: r.ps_is_frozen,
-                    is_closed: r.ps_is_closed,
-                    last_checked: r.ps_last_checked,
-                };
-                (build, state)
-            })
-            .collect())
+        .await?)
     }
 
     /// Every program ID the sweep should refresh: existing `program_state`

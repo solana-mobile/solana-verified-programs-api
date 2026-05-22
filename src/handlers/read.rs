@@ -1,7 +1,7 @@
 //! GET handlers — pure DB reads. Freshness is the sweep + webhooks' job.
 
 use crate::{
-    db::{BuildRow, Db, ProgramStateRow, PER_PAGE},
+    db::{BuildRow, Db, PER_PAGE},
     error::{ApiError, Result},
     logs,
     onchain::build_repo_url,
@@ -36,57 +36,56 @@ pub async fn status(
     State(db): State<Db>,
     Path(program_id): Path<ProgramId>,
 ) -> Json<ExtendedStatusResponse> {
-    let row = db.status_row(&program_id).await.ok().flatten();
-    let Some((state, build)) = row else {
-        return Json(ExtendedStatusResponse {
-            status: StatusResponse {
-                is_verified: false,
-                message: "On chain program not verified".into(),
-                on_chain_hash: String::new(),
-                executable_hash: String::new(),
-                repo_url: String::new(),
-                commit: String::new(),
-                last_verified_at: None,
-            },
-            is_frozen: false,
-            is_closed: false,
-        });
-    };
-    let on_chain_hash = state.on_chain_hash.unwrap_or_default();
-    let resp = match build {
+    let state = db
+        .get_program_state(&program_id.as_str())
+        .await
+        .ok()
+        .flatten();
+    let on_chain_hash = state
+        .as_ref()
+        .and_then(|s| s.on_chain_hash.clone())
+        .unwrap_or_default();
+    let is_frozen = state.as_ref().is_some_and(|s| s.is_frozen);
+    let is_closed = state.as_ref().is_some_and(|s| s.is_closed);
+    // best_build needs the on-chain hash to break ties when multiple
+    // completed builds exist (post-upgrade history). Sequential is the
+    // simplest correct shape.
+    let build = db
+        .best_build(&program_id, Some(on_chain_hash.as_str()))
+        .await
+        .ok()
+        .flatten();
+
+    let status = match build {
         Some(b) => {
             let is_verified = !on_chain_hash.is_empty()
                 && b.executable_hash.as_deref() == Some(on_chain_hash.as_str())
-                && !state.is_closed;
-            ExtendedStatusResponse {
-                status: StatusResponse {
-                    is_verified,
-                    message: status_message(is_verified),
-                    on_chain_hash,
-                    executable_hash: b.executable_hash.unwrap_or_default(),
-                    repo_url: build_repo_url(&b.repository, b.commit_hash.as_deref()),
-                    commit: b.commit_hash.unwrap_or_default(),
-                    last_verified_at: b.completed_at.map(|t| t.naive_utc()),
-                },
-                is_frozen: state.is_frozen,
-                is_closed: state.is_closed,
+                && !is_closed;
+            StatusResponse {
+                is_verified,
+                message: status_message(is_verified),
+                on_chain_hash,
+                executable_hash: b.executable_hash.unwrap_or_default(),
+                repo_url: build_repo_url(&b.repository, b.commit_hash.as_deref()),
+                commit: b.commit_hash.unwrap_or_default(),
+                last_verified_at: b.completed_at.map(|t| t.naive_utc()),
             }
         }
-        None => ExtendedStatusResponse {
-            status: StatusResponse {
-                is_verified: false,
-                message: "On chain program not verified".into(),
-                on_chain_hash,
-                executable_hash: String::new(),
-                repo_url: String::new(),
-                commit: String::new(),
-                last_verified_at: None,
-            },
-            is_frozen: state.is_frozen,
-            is_closed: state.is_closed,
+        None => StatusResponse {
+            is_verified: false,
+            message: "On chain program not verified".into(),
+            on_chain_hash,
+            executable_hash: String::new(),
+            repo_url: String::new(),
+            commit: String::new(),
+            last_verified_at: None,
         },
     };
-    Json(resp)
+    Json(ExtendedStatusResponse {
+        status,
+        is_frozen,
+        is_closed,
+    })
 }
 
 /// `GET /status-all/:program_id` — one entry per signer that has claimed the program.
@@ -293,12 +292,11 @@ pub async fn verified_programs_paginated(
 pub async fn verified_programs_status(
     State(db): State<Db>,
 ) -> (StatusCode, Json<VerifiedProgramsStatusListResponse>) {
-    match db.verified_programs_with_state().await {
-        Ok(rows) => {
-            let data = rows
-                .into_iter()
-                .map(|(b, s)| program_status_row(b, s))
-                .collect();
+    match db.currently_verified_builds().await {
+        Ok(builds) => {
+            // Every row here passed the join filter, so is_verified is always
+            // true and on_chain_hash == executable_hash.
+            let data = builds.into_iter().map(verified_program_status_row).collect();
             (
                 StatusCode::OK,
                 Json(VerifiedProgramsStatusListResponse {
@@ -319,16 +317,14 @@ pub async fn verified_programs_status(
     }
 }
 
-fn program_status_row(b: BuildRow, s: ProgramStateRow) -> VerifiedProgramStatusResponse {
-    let on_chain_hash = s.on_chain_hash.unwrap_or_default();
-    let exec_hash = b.executable_hash.unwrap_or_default();
-    let is_verified = !on_chain_hash.is_empty() && on_chain_hash == exec_hash;
+fn verified_program_status_row(b: BuildRow) -> VerifiedProgramStatusResponse {
+    let hash = b.executable_hash.unwrap_or_default();
     VerifiedProgramStatusResponse {
         program_id: b.program_id,
-        is_verified,
-        message: status_message(is_verified),
-        on_chain_hash,
-        executable_hash: exec_hash,
+        is_verified: true,
+        message: status_message(true),
+        on_chain_hash: hash.clone(),
+        executable_hash: hash,
         last_verified_at: b.completed_at.map(|t| t.naive_utc()),
         repo_url: build_repo_url(&b.repository, b.commit_hash.as_deref()),
         commit: b.commit_hash.unwrap_or_default(),

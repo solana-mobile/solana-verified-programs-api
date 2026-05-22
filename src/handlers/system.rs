@@ -33,7 +33,18 @@ const LANDING_HTML: &str = r#"<!doctype html>
       </p>
 
       <div class="card">
+        <strong>Need help?</strong>
+        <ul>
+          <li>Email: <a href="mailto:contact@osec.io">contact@osec.io</a></li>
+          <li>GitHub: <a href="https://github.com/otter-sec/solana-verified-programs-api">otter-sec/solana-verified-programs-api</a></li>
+        </ul>
+      </div>
+
+      <div class="card">
         <strong>Docs</strong>
+        <p class="muted" style="margin-top:10px;">
+          Learn how to create verified builds in the official documentation.
+        </p>
         <p style="margin:0;">
           <a href="https://solana.com/docs/programs/verified-builds#how-do-i-create-verified-builds">
             Solana docs: Verified Builds (How do I create verified builds?)
