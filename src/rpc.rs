@@ -1,4 +1,4 @@
-use crate::{CONFIG, error::ApiError, error::Result};
+use crate::{CONFIG, errors::ApiError, errors::Result};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use std::sync::Arc;
 use tokio::sync::RwLock;

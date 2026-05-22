@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 mod build;
 mod config;
 mod db;
-mod error;
+mod errors;
 mod handlers;
 mod logs;
 mod onchain;
@@ -15,7 +15,7 @@ mod sweep;
 mod validation;
 
 /// Result type for API
-pub type Result<T> = std::result::Result<T, error::ApiError>;
+pub type Result<T> = std::result::Result<T, errors::ApiError>;
 
 /// Static configuration instance for the API
 static CONFIG: once_cell::sync::Lazy<Config> = once_cell::sync::Lazy::new(|| {
@@ -35,6 +35,12 @@ async fn main() {
     db.migrate().await.expect("Failed to apply migrations");
 
     // Start background jobs
+    let bg_job_manager = sweep::BackgroundJobManager::new(&db);
+
+    // Log initial health status
+    let initial_health = bg_job_manager.get_health_status().await;
+    tracing::info!("Background job initial status: {:?}", initial_health);
+
     sweep::spawn(db.clone());
 
     // Setup API router and start server

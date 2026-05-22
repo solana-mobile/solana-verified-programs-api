@@ -3,7 +3,7 @@
 use crate::{
     CONFIG,
     db::{Db, NewBuild},
-    error::{ApiError, Result},
+    errors::{ApiError, Result},
     logs,
     onchain::extract_hash_with_prefix,
     response::VerificationWebhookPayload,

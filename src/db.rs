@@ -4,7 +4,7 @@
 //! sqlx's `query!`/`query_as!`/`query_scalar!` macros.
 
 use crate::{
-    CONFIG, error::ApiError, error::Result, onchain::ProgramOnchainState,
+    CONFIG, errors::ApiError, errors::Result, onchain::ProgramOnchainState,
 };
 use chrono::{DateTime, Utc};
 use sqlx::{postgres::PgPoolOptions, PgPool};

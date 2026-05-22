@@ -70,7 +70,7 @@ impl<'a> BackgroundJobManager<'a> {
     }
 }
 
-async fn run_once(db: &Db) -> crate::error::Result<()> {
+async fn run_once(db: &Db) -> crate::errors::Result<()> {
     let ids = db.sweep_program_ids().await?;
     if ids.is_empty() {
         return Ok(());

@@ -87,7 +87,7 @@ async fn process_otter_verify_instruction(
                 client
                     .get_account_data(&pda_account_pubkey)
                     .await
-                    .map_err(|e| crate::error::ApiError::Rpc(format!("RPC error: {e}")))
+                    .map_err(|e| crate::errors::ApiError::Rpc(format!("RPC error: {e}")))
             })
             .await?;
         let otter_build_params = match OtterBuildParams::try_from_slice(&params[8..]) {

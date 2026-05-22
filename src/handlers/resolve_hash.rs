@@ -3,7 +3,7 @@
 
 use crate::{
     db::Db,
-    error::{ApiError, Result},
+    errors::{ApiError, Result},
     response::{ResolveHashEntry, ResolveHashResponse},
 };
 use axum::{

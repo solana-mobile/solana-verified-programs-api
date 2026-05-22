@@ -1,4 +1,4 @@
-use crate::{CONFIG, error::Result};
+use crate::{CONFIG, errors::Result};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tokio::fs;

@@ -1,6 +1,6 @@
 //! Everything that touches the Solana chain.
 
-use crate::{error::ApiError, error::Result, rpc::get_rpc_manager};
+use crate::{errors::ApiError, errors::Result, rpc::get_rpc_manager};
 use borsh::{BorshDeserialize, BorshSerialize};
 use sha2::{Digest, Sha256};
 use solana_account_decoder::parse_bpf_loader::{
