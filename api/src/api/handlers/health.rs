@@ -1,7 +1,7 @@
 use crate::db::DbClient;
 use axum::{extract::State, http::StatusCode, Json};
 
-/// Health check: Postgres + Redis reachable.
+/// Health check endpoint
 pub async fn health_check(State(db): State<DbClient>) -> (StatusCode, Json<serde_json::Value>) {
     // Get Redis connection and status
     let (redis_status, redis_ok) = match db.get_async_redis_conn().await {

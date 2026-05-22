@@ -20,16 +20,6 @@ use tracing::{error, info, warn};
 
 const OTTER_VERIFY_PROGRAM_ID: &str = "verifycLy8mB96wd9wqq3WDXQwM4oU6r42Th37Db9fC";
 
-/// `POST /pda` — Helius webhook listening to PDA creates/updates on the
-/// Otter verify program. For each PDA instruction we fetch the PDA's
-/// build params from chain and kick off a verification.
-///
-/// `process_verification`'s directory cache hit short-circuits when the
-/// same `(repo, commit, build_args)` has already been built, so
-/// duplicate PDA events are cheap.
-///
-/// Backpressure (trust filter on the signer, per-program cooldown) is
-/// follow-up work — see the proposal's open questions.
 pub(crate) async fn handle_pda_updates_creations(
     State(db): State<DbClient>,
     headers: HeaderMap,
@@ -50,7 +40,6 @@ pub(crate) async fn handle_pda_updates_creations(
         Err(status) => return status,
     };
 
-    // Spawn so Helius gets its 200 immediately.
     let db_for_task = db.clone();
     tokio::spawn(async move {
         for ix in parsed.instructions {
@@ -93,7 +82,6 @@ async fn process_pda_event(
         })
         .await?;
 
-    // Skip the Anchor 8-byte discriminator.
     let otter_build_params = OtterBuildParams::try_from_slice(&pda_data[8..])?;
     let signer = otter_build_params.signer.to_string();
     let build_params = SolanaProgramBuildParams::from(otter_build_params);

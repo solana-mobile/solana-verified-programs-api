@@ -11,15 +11,16 @@ use axum::http::StatusCode;
 use axum::Json;
 use tracing::{error, info};
 
-/// `GET /status/:address` — thin wrapper over the content-addressed directory.
+/// Handler for checking if a specific program is verified
 ///
-///   1. RPC-fetch the current on-chain program hash.
-///   2. Look that hash up in `verified_hashes` filtered by the trust set
-///      `{program upgrade authority} ∪ SIGNER_KEYS ∪ {DEFAULT_SIGNER}`.
-///   3. Return verified iff a trusted signer has claimed this hash.
+/// # Endpoint: GET /status/:address
 ///
-/// No `is_verified` flag, no invalidation, no staleness — every call hashes
-/// whatever is currently on-chain.
+/// # Arguments
+/// * `db` - Database client from application state
+/// * `address` - Program address to check verification status
+///
+/// # Returns
+/// * `(StatusCode, Json<ExtendedStatusResponse>)` - HTTP status and verification status details
 pub(crate) async fn get_verification_status(
     State(db): State<DbClient>,
     Path(VerificationStatusParams { address }): Path<VerificationStatusParams>,
@@ -124,10 +125,6 @@ pub(crate) async fn get_verification_status(
     }
 }
 
-/// Trust ordering matching the pre-content-addressing query:
-/// `{program_authority} ∪ SIGNER_KEYS ∪ {DEFAULT_SIGNER}`. The system-program
-/// sentinel is kept because the Solana Explorer treats it as a trusted claim
-/// and legacy rows were defaulted to it.
 fn trust_set_for(program_authority: Option<&str>) -> Vec<String> {
     let mut out = Vec::with_capacity(2 + SIGNER_KEYS.len());
     if let Some(a) = program_authority {
@@ -160,14 +157,16 @@ fn not_verified(
     }
 }
 
-/// `GET /status-all/:address` — every trusted signer's claim for the
-/// program's current on-chain hash. Internally:
+/// Handler for retrieving all verification information for a program
 ///
-///   1. RPC-fetch the current on-chain program hash.
-///   2. Look it up in `verified_hashes` filtered by the trust set
-///      `{program upgrade authority} ∪ SIGNER_KEYS ∪ {DEFAULT_SIGNER}`.
-///   3. Render each row in the legacy `VerificationResponseWithSigner` shape
-///      so existing consumers (Solana Explorer, CLI) are unaffected.
+/// # Endpoint: GET /status-all/:address
+///
+/// # Arguments
+/// * `db` - Database client from application state
+/// * `address` - Program address to get verification information
+///
+/// # Returns
+/// * `(StatusCode, Json<ApiResponse>)` - HTTP status and all verification information
 pub(crate) async fn get_verification_status_all(
     State(db): State<DbClient>,
     Path(VerificationStatusParams { address }): Path<VerificationStatusParams>,

@@ -59,7 +59,7 @@ pub(crate) async fn get_job_status(
                         Json(JobVerificationResponse {
                             status: JobStatus::Completed.into(),
                             message: "Job completed".to_string(),
-                            on_chain_hash: String::new(), // use /status/:address for the live answer
+                            on_chain_hash: String::new(),
                             executable_hash,
                             repo_url,
                         }),

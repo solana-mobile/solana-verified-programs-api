@@ -10,7 +10,6 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use tracing::error;
 
-/// Page size for the paginated `/verified-programs/:page` view over the directory.
 pub const PER_PAGE: i64 = 20;
 
 #[derive(QueryableByName)]

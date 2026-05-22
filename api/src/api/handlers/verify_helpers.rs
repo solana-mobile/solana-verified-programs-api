@@ -25,9 +25,11 @@ pub struct VerificationSetup {
     pub signer: String,
 }
 
-/// Common setup logic for verification endpoints: fetch the on-chain program
-/// authority (hint for picking the PDA signer), then read the Otter verify
-/// PDA to get the canonical build params + signer.
+/// Common setup logic for verification endpoints
+///
+/// Handles:
+/// - Getting program authority from on-chain
+/// - Fetching verification parameters from PDA
 pub async fn setup_verification(
     program_id: &str,
     specific_signer: Option<String>,

@@ -74,10 +74,6 @@ impl<'a> From<&'a SolanaProgramBuildParams> for SolanaProgramBuild {
     }
 }
 
-/// Result of a single build run, returned by `execute_verification`.
-/// Carries just the bytes needed by the synchronous response and the
-/// webhook payload — no DB persistence; the directory is the source
-/// of truth for "this hash exists".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifiedProgram {
     /// Program ID

@@ -12,12 +12,12 @@ use tracing::{error, info};
 
 const STATUS_ALL_CONCURRENCY: usize = 20;
 
-/// `GET /verified-programs-status` — per-program status for every program
-/// with a verified build in the directory.
+/// Handler for retrieving status of all verified programs
 ///
-/// For each program: RPC-fetch the current on-chain hash, look it up in
-/// the directory with the trust set, and return a status row. N+1 RPC
-/// pattern with bounded concurrency.
+/// # Endpoint: GET /verified-programs-status
+///
+/// # Returns
+/// * `(StatusCode, Json<VerifiedProgramsStatusListResponse>)` - Status and list of program statuses
 pub(crate) async fn get_verified_programs_status(
     State(db): State<DbClient>,
 ) -> (StatusCode, Json<VerifiedProgramsStatusListResponse>) {

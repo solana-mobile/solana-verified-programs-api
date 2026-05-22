@@ -40,8 +40,6 @@ pub async fn process_verification_request(
             if let Err(e) = db.update_build_status(&uid, JobStatus::Completed).await {
                 error!("Failed to update build status to completed: {:?}", e);
             }
-            // Populate the content-addressed directory. Signer comes from the
-            // build row we inserted at submission time.
             if !res.executable_hash.is_empty() {
                 if let Ok(build) = db.get_job(&uid).await {
                     let signer = build

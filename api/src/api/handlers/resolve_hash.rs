@@ -13,13 +13,9 @@ pub struct ResolveHashParams {
     pub hash: String,
 }
 
-/// `GET /resolve-hash/:hash` — content-addressed lookup.
+/// Handler for resolving an executable hash to every signer's claim about it
 ///
-/// Returns every signer's claim about a given executable hash:
-/// `[{ executable_hash, signer, repository, commit, build_args, verified_at }]`.
-/// No trust filtering — the consumer chose to look up bytes, they decide
-/// whose claim to weigh. Empty list (200, `[]`) on a well-formed but unknown
-/// hash; 400 on a malformed hash.
+/// # Endpoint: GET /resolve-hash/:hash
 pub(crate) async fn resolve_hash(
     State(db): State<DbClient>,
     Path(ResolveHashParams { hash }): Path<ResolveHashParams>,
