@@ -1,34 +1,18 @@
-use crate::db::models::SolanaProgramBuild;
-
-/// Extracts the last line from a multi-line string
-///
-/// # Arguments
-/// * `output` - Multi-line string to process
-///
-/// # Returns
-/// * `Option<String>` - Last line if present, None if empty
-pub fn get_last_line(output: &str) -> Option<String> {
-    output.lines().last().map(ToOwned::to_owned)
-}
-
 /// Constructs a repository URL with optional commit hash
 ///
 /// # Arguments
-/// * `build_params` - Build parameters containing repository and commit information
+/// * `repository` - Base repository URL
+/// * `commit` - Optional commit hash (or `"None"`, which is treated as absent)
 ///
 /// # Returns
 /// * `String` - Full repository URL, optionally including commit reference
-pub fn build_repository_url(build_params: &SolanaProgramBuild) -> String {
-    if let Some(hash) = &build_params.commit_hash {
+pub fn build_repository_url(repository: &str, commit: Option<&str>) -> String {
+    if let Some(hash) = commit {
         if !hash.is_empty() && hash != "None" {
-            return format!(
-                "{}/tree/{}",
-                build_params.repository.trim_end_matches('/'),
-                hash
-            );
+            return format!("{}/tree/{}", repository.trim_end_matches('/'), hash);
         }
     }
-    build_params.repository.clone()
+    repository.to_string()
 }
 
 /// Extracts a hash value from output text with a specific prefix
@@ -61,33 +45,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_get_last_line() {
-        assert_eq!(get_last_line("Hello\nWorld"), Some("World".to_string()));
-        assert_eq!(get_last_line(""), None);
-        assert_eq!(get_last_line("Solana"), Some("Solana".to_string()));
-    }
-
-    #[test]
-    fn test_get_repo_url() {
-        let mut build = SolanaProgramBuild {
-            repository: "https://github.com/user/repo/".to_string(),
-            commit_hash: Some("abc123".to_string()),
-            ..Default::default()
-        };
+    fn test_build_repository_url() {
         assert_eq!(
-            build_repository_url(&build),
+            build_repository_url("https://github.com/user/repo/", Some("abc123")),
             "https://github.com/user/repo/tree/abc123"
         );
-
-        build.commit_hash = None;
         assert_eq!(
-            build_repository_url(&build),
+            build_repository_url("https://github.com/user/repo/", None),
             "https://github.com/user/repo/"
         );
-
-        build.commit_hash = Some("".to_string());
         assert_eq!(
-            build_repository_url(&build),
+            build_repository_url("https://github.com/user/repo/", Some("")),
             "https://github.com/user/repo/"
         );
     }
