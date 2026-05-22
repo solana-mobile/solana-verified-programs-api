@@ -21,7 +21,7 @@ solana-pubkey = "4.2.0"
 solana-sdk-ids = "3.1.0"
 solana-signature = "3.4.0"
 solana-transaction-status = "3.1.8"
-sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls", "chrono", "uuid", "macros", "migrate"] }
+sqlx = { version = "0.9", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring-webpki", "chrono", "uuid", "macros", "migrate"] }
 thiserror = "2"
 tokio = { version = "1.43.1", features = ["full"] }
 tower = { version = "0.5.3", features = ["limit", "buffer", "util"] }
