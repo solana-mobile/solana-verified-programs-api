@@ -1,7 +1,10 @@
 use crate::{
     config::CONFIG,
     db::Db,
-    handlers::{health, index, read, verify, webhooks},
+    handlers::{
+        async_verify, health, index, job_status, logs, pda_worker, resolve_hash, sync_verify,
+        unverify, verification_status, verified_programs_list, verified_programs_status,
+    },
 };
 use axum::{
     http::{Method, Request},
@@ -55,36 +58,54 @@ pub fn build(db: Db) -> Router {
 
     let verify_group: Router<Db> = maybe_rl!(
         Router::new()
-            .route("/verify", post(verify::verify_async))
-            .route("/verify-with-signer", post(verify::verify_with_signer))
-            .route("/verify_sync", post(verify::verify_sync)),
+            .route("/verify", post(async_verify::process_async_verification))
+            .route(
+                "/verify-with-signer",
+                post(async_verify::process_async_verification_with_signer),
+            )
+            .route("/verify_sync", post(sync_verify::process_sync_verification)),
         30,
         1
     );
     let webhook_group: Router<Db> = maybe_rl!(
         Router::new()
-            .route("/unverify", post(webhooks::unverify))
-            .route("/pda", post(webhooks::pda)),
+            .route("/unverify", post(unverify::handle_unverify))
+            .route("/pda", post(pda_worker::handle_pda_updates_creations)),
         1,
         100
     );
     let read_group: Router<Db> = maybe_rl!(
         Router::new()
-            .route("/status/:program_id", get(read::status))
-            .route("/status-all/:program_id", get(read::status_all))
-            .route("/resolve-hash/:hash", get(read::resolve_hash))
-            .route("/job/:job_id", get(read::job))
-            .route("/logs/:build_id", get(read::build_logs))
-            .route("/verified-programs", get(read::verified_programs))
+            .route(
+                "/status/:address",
+                get(verification_status::get_verification_status),
+            )
+            .route(
+                "/status-all/:address",
+                get(verification_status::get_verification_status_all),
+            )
+            .route(
+                "/resolve-hash/:hash",
+                get(resolve_hash::get_builds_for_hash),
+            )
+            .route("/job/:job_id", get(job_status::get_job_status))
+            .route("/logs/:build_id", get(logs::get_build_logs))
+            .route(
+                "/verified-programs",
+                get(verified_programs_list::get_verified_programs_list),
+            )
             .route(
                 "/verified-programs/:page",
-                get(read::verified_programs_paginated),
+                get(verified_programs_list::get_verified_programs_list_paginated),
             )
             .route(
                 "/verified-programs-status",
-                get(read::verified_programs_status),
+                get(verified_programs_status::get_verified_programs_status),
             )
-            .route("/health/background-jobs", get(read::background_job_status)),
+            .route(
+                "/health/background-jobs",
+                get(health::background_job_status),
+            ),
         1,
         100
     );
@@ -95,7 +116,7 @@ pub fn build(db: Db) -> Router {
         .merge(read_group)
         .route("/", get(index::landing_page))
         .route("/api", get(index::index))
-        .route("/health", get(health::health))
+        .route("/health", get(health::health_check))
         .layer(cors(Method::GET))
         .layer(CompressionLayer::new().zstd(true))
         .layer(trace)
