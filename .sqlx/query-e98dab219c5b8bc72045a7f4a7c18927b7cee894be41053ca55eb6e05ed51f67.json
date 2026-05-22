@@ -1,0 +1,148 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                ps.program_id    AS \"ps_program_id!\",\n                ps.on_chain_hash AS \"ps_on_chain_hash\",\n                ps.authority     AS \"ps_authority\",\n                ps.is_frozen     AS \"ps_is_frozen!\",\n                ps.is_closed     AS \"ps_is_closed!\",\n                ps.last_checked  AS \"ps_last_checked!\",\n                b.id                AS \"b_id?\",\n                b.repository        AS \"b_repository?\",\n                b.commit_hash       AS \"b_commit_hash?\",\n                b.program_id        AS \"b_program_id?\",\n                b.lib_name          AS \"b_lib_name?\",\n                b.base_docker_image AS \"b_base_docker_image?\",\n                b.mount_path        AS \"b_mount_path?\",\n                b.cargo_args        AS \"b_cargo_args?: Vec<String>\",\n                b.bpf_flag          AS \"b_bpf_flag?\",\n                b.arch              AS \"b_arch?\",\n                b.signer            AS \"b_signer?\",\n                b.status            AS \"b_status?\",\n                b.executable_hash   AS \"b_executable_hash?\",\n                b.error_message     AS \"b_error_message?\",\n                b.created_at        AS \"b_created_at?\",\n                b.completed_at      AS \"b_completed_at?\"\n            FROM program_state ps\n            LEFT JOIN LATERAL (\n                SELECT *\n                FROM builds\n                WHERE program_id = ps.program_id AND status = 'completed'\n                ORDER BY (executable_hash IS NOT DISTINCT FROM ps.on_chain_hash) DESC,\n                         CASE signer\n                             WHEN '11111111111111111111111111111111' THEN 0\n                             WHEN '9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU' THEN 1\n                             WHEN 'CyJj5ejJAUveDXnLduJbkvwjxcmWJNqCuB9DR7AExrHn' THEN 1\n                             WHEN '5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r' THEN 1\n                             ELSE 2\n                         END ASC,\n                         completed_at DESC\n                LIMIT 1\n            ) b ON TRUE\n            WHERE ps.program_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ps_program_id!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "ps_on_chain_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "ps_authority",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "ps_is_frozen!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "ps_is_closed!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "ps_last_checked!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "b_id?",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "b_repository?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "b_commit_hash?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "b_program_id?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "b_lib_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "b_base_docker_image?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "b_mount_path?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "b_cargo_args?: Vec<String>",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 14,
+        "name": "b_bpf_flag?",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
+        "name": "b_arch?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "b_signer?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 17,
+        "name": "b_status?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 18,
+        "name": "b_executable_hash?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "b_error_message?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 20,
+        "name": "b_created_at?",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 21,
+        "name": "b_completed_at?",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "e98dab219c5b8bc72045a7f4a7c18927b7cee894be41053ca55eb6e05ed51f67"
+}

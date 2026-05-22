@@ -1,0 +1,146 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                b.id                AS \"b_id!\",\n                b.repository        AS \"b_repository!\",\n                b.commit_hash       AS \"b_commit_hash\",\n                b.program_id        AS \"b_program_id!\",\n                b.lib_name          AS \"b_lib_name\",\n                b.base_docker_image AS \"b_base_docker_image\",\n                b.mount_path        AS \"b_mount_path\",\n                b.cargo_args        AS \"b_cargo_args: Vec<String>\",\n                b.bpf_flag          AS \"b_bpf_flag!\",\n                b.arch              AS \"b_arch\",\n                b.signer            AS \"b_signer\",\n                b.status            AS \"b_status!\",\n                b.executable_hash   AS \"b_executable_hash\",\n                b.error_message     AS \"b_error_message\",\n                b.created_at        AS \"b_created_at!\",\n                b.completed_at      AS \"b_completed_at\",\n                ps.program_id    AS \"ps_program_id!\",\n                ps.on_chain_hash AS \"ps_on_chain_hash\",\n                ps.authority     AS \"ps_authority\",\n                ps.is_frozen     AS \"ps_is_frozen!\",\n                ps.is_closed     AS \"ps_is_closed!\",\n                ps.last_checked  AS \"ps_last_checked!\"\n            FROM (\n                SELECT DISTINCT ON (program_id) *\n                FROM builds\n                WHERE status = 'completed' AND executable_hash IS NOT NULL\n                ORDER BY program_id, completed_at DESC\n            ) b\n            JOIN program_state ps ON ps.program_id = b.program_id\n            WHERE b.executable_hash = ps.on_chain_hash\n              AND NOT ps.is_closed\n              AND NOT ps.is_frozen\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "b_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "b_repository!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "b_commit_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "b_program_id!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "b_lib_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "b_base_docker_image",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "b_mount_path",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "b_cargo_args: Vec<String>",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 8,
+        "name": "b_bpf_flag!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "b_arch",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "b_signer",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "b_status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "b_executable_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "b_error_message",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "b_created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "b_completed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "ps_program_id!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 17,
+        "name": "ps_on_chain_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 18,
+        "name": "ps_authority",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "ps_is_frozen!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 20,
+        "name": "ps_is_closed!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 21,
+        "name": "ps_last_checked!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "75281bd7600dc9d89e194d6a1a866ce0f768ccae42e84456c08a56427738ad49"
+}

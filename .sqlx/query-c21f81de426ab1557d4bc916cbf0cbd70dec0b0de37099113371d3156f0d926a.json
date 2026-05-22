@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO builds (\n                id, repository, commit_hash, program_id, lib_name,\n                base_docker_image, mount_path, cargo_args, bpf_flag, arch,\n                signer, status\n            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "TextArray",
+        "Bool",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c21f81de426ab1557d4bc916cbf0cbd70dec0b0de37099113371d3156f0d926a"
+}

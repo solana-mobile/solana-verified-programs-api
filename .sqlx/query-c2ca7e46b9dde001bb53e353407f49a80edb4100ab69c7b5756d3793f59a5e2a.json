@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT program_id AS \"program_id!\" FROM (\n                SELECT ps.program_id, ps.last_checked\n                FROM program_state ps\n                UNION\n                SELECT b.program_id, NULL::timestamptz AS last_checked\n                FROM (SELECT DISTINCT program_id FROM builds WHERE status = 'completed') b\n                WHERE NOT EXISTS (SELECT 1 FROM program_state ps WHERE ps.program_id = b.program_id)\n            ) q\n            ORDER BY last_checked ASC NULLS FIRST\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "program_id!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c2ca7e46b9dde001bb53e353407f49a80edb4100ab69c7b5756d3793f59a5e2a"
+}

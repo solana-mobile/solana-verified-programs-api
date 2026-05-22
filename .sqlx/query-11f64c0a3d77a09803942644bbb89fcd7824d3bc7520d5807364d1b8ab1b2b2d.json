@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM program_state WHERE program_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "program_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "on_chain_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "authority",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "is_frozen",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "is_closed",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "last_checked",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "11f64c0a3d77a09803942644bbb89fcd7824d3bc7520d5807364d1b8ab1b2b2d"
+}

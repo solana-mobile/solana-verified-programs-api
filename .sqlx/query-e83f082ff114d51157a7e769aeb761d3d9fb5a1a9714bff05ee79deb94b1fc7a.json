@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO program_state\n                (program_id, on_chain_hash, authority, is_frozen, is_closed, last_checked)\n             VALUES ($1, $2, $3, $4, $5, NOW())\n             ON CONFLICT (program_id) DO UPDATE\n             SET on_chain_hash = COALESCE(EXCLUDED.on_chain_hash, program_state.on_chain_hash),\n                 authority     = EXCLUDED.authority,\n                 is_frozen     = EXCLUDED.is_frozen,\n                 is_closed     = EXCLUDED.is_closed,\n                 last_checked  = NOW()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e83f082ff114d51157a7e769aeb761d3d9fb5a1a9714bff05ee79deb94b1fc7a"
+}

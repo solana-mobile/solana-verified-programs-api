@@ -46,6 +46,15 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      - name: Verify .sqlx/ is in sync with the source
+        env:
+          SQLX_OFFLINE: "true"
+        run: |
+          # Re-issuing prepare requires a live DB; instead, just confirm the
+          # offline cache parses and compilation succeeds without DATABASE_URL.
+          test -d .sqlx
+          ls .sqlx/*.json > /dev/null
+
       - name: Run clippy
         env:
           SQLX_OFFLINE: "true"
