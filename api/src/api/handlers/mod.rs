@@ -13,6 +13,7 @@ pub mod health; // Health check and background job status
 pub mod job_status; // Build job status
 pub mod logs; // Build logs retrieval
 pub mod pda_worker;
+pub mod resolve_hash; // Content-addressed hash → build provenance lookup
 pub mod verified_programs_list; // List of verified programs
 pub mod verified_programs_status; // Status of verified programs // PDA updates/creations
 
@@ -23,6 +24,7 @@ pub(crate) use health::{background_job_status, health_check};
 pub(crate) use job_status::get_job_status;
 pub(crate) use logs::get_build_logs;
 pub(crate) use pda_worker::handle_pda_updates_creations;
+pub(crate) use resolve_hash::resolve_hash;
 pub(crate) use sync_verify::process_sync_verification;
 pub(crate) use unverify::handle_unverify;
 pub(crate) use verification_status::{get_verification_status, get_verification_status_all};

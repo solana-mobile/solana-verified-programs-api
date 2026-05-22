@@ -36,6 +36,18 @@ pub fn validate_http_url(value: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validates an executable hash: a SHA-256 hex string (64 chars, [0-9a-fA-F]).
+pub fn validate_executable_hash(value: &str) -> Result<(), String> {
+    let s = value.trim();
+    if s.len() != 64 {
+        return Err("Executable hash must be a 64-character hex string".to_string());
+    }
+    if !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("Executable hash must be a hex string".to_string());
+    }
+    Ok(())
+}
+
 const SEARCH_VALIDATION_MSG: &str = "Search must be a valid Solana address or a valid URL";
 
 /// Validates search query; must be a valid Solana public key or a valid URL

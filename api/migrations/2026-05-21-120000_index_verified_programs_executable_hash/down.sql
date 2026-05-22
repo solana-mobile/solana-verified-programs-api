@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_verified_programs_executable_hash;

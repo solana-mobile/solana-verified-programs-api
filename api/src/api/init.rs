@@ -115,6 +115,7 @@ pub fn initialize_router(db: DbClient) -> Router {
         )
         .route("/status-all/:address", get(get_verification_status_all))
         .route("/status/:address", get(get_verification_status))
+        .route("/resolve-hash/:hash", get(resolve_hash))
         .route("/job/:job_id", get(get_job_status))
         .route("/logs/:build_id", get(get_build_logs))
         .route("/pda", post(handle_pda_updates_creations))
