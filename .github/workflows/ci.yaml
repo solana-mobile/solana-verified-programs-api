@@ -49,6 +49,8 @@ jobs:
 
       - name: Run clippy
         working-directory: api
+        env:
+          SQLX_OFFLINE: "true"
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Check dependency sort
@@ -64,7 +66,7 @@ jobs:
         env:
           RPC_URL: ${{ secrets.RPC_URL }}
           DATABASE_URL: postgres://dummy:dummy@localhost/dummy
-          REDIS_URL: redis://localhost:6379
           AUTH_SECRET: dummy-secret
           PORT: "8080"
+          SQLX_OFFLINE: "true"
         run: cargo test

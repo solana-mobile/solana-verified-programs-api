@@ -91,15 +91,21 @@ curl https://verify.osec.io/verified-programs/1 | jq
 curl https://verify.osec.io/verified-programs-status | jq
 ```
 
+#### Content-Addressed Lookup
+Given an executable hash, return every completed build that produced it:
+
+```bash
+curl https://verify.osec.io/resolve-hash/5bdb733d... | jq
+```
+
 ### Rate Limits
 
-- **Verification endpoints**: 5 requests/second globally, 1 request per 30 seconds per IP
-- **Status/query endpoints**: 10,000 requests/second globally, 100 requests/second per IP
-- **Unverify endpoint**: 100 requests/second globally
+- **Verification endpoints**: 1 request per 30 seconds per IP
+- **Webhook endpoints (`/pda`, `/unverify`)** and read endpoints: bursty per-IP limits
 
 ### Security
 
-To mitigate against false verification results, we rerun program verification every 24 hours. Note that verification should not be considered a strict security boundary.
+Whether a program is verified is computed at read time as `program_state.on_chain_hash == latest_matching_build.executable_hash`. The cached on-chain hash is refreshed by webhook on every program upgrade and by a periodic background sweep. Verification should not be considered a strict security boundary.
 
 ## Otter Verify PDA Worker
 

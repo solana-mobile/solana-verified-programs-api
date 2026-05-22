@@ -1,30 +1,28 @@
-FROM rust:1.93 AS api_build
+FROM rust:1.93 AS build
 
-WORKDIR /solana_verified_program_api
+WORKDIR /api
 
-# Install system dependencies required by hidapi/solana-verify
 RUN apt-get update && apt-get install -y \
     libudev-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the entire project directory to the Docker image
 COPY api ./api
 
-WORKDIR /solana_verified_program_api/api
+WORKDIR /api/api
 
+ENV SQLX_OFFLINE=true
 RUN cargo build --release
 
 RUN cargo install solana-verify --git https://github.com/solana-foundation/solana-verifiable-build --tag v0.4.15
 
-FROM debian:stable-slim AS api_final
+FROM debian:stable-slim AS final
 
-WORKDIR /solana_verified_program_api
+WORKDIR /api
 
-COPY --from=api_build /solana_verified_program_api/api/target/release/verified_programs_api .
+COPY --from=build /api/api/target/release/verified_programs_api .
+COPY --from=build /usr/local/cargo/bin/solana-verify /usr/local/bin/solana-verify
 
-COPY --from=api_build /usr/local/cargo/bin/solana-verify /usr/local/bin/solana-verify
-
-RUN apt-get update && apt-get install -y docker.io libpq-dev
+RUN apt-get update && apt-get install -y docker.io ca-certificates && rm -rf /var/lib/apt/lists/*
 
 CMD ["./verified_programs_api"]

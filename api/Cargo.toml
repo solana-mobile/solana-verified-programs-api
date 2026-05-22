@@ -1,40 +1,33 @@
 [package]
 name = "verified_programs_api"
-version = "1.5.3"
+version = "2.0.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.6.18"
+axum = "0.7"
 borsh = "1.5.1"
 chrono = { version = "0.4.35", features = ["serde"] }
-diesel = { version = "2.2.6", features = ["postgres", "chrono", "r2d2"] }
-diesel-async = { version = "0.5.2", features = ["postgres", "deadpool"] }
-dotenv = { version = "0.15" }
+dotenv = "0.15"
 envy = "0.4.2"
 futures = "0.3.31"
 once_cell = "1.20.2"
-redis = { version = "0.32.3", features = ["aio", "tokio-comp"] }
-reqwest = { version = "0.12", features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0.166", features = ["derive"] }
-serde_json = { version = "1.0.99" }
-solana-account-decoder = { version = "3.1.8" }
-solana-client = { version = "3.1.8" }
-solana-sdk = { version = "4.0.0" }
+serde_json = "1.0.99"
+solana-account-decoder = "3.1.8"
+solana-client = "3.1.8"
+solana-sdk = "4.0.0"
 solana-sdk-ids = "3.1.0"
-solana-transaction-status = { version = "3.1.8" }
-thiserror = { version = "1.0.44" }
+solana-transaction-status = "3.1.8"
+sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls", "chrono", "uuid", "macros", "migrate"] }
+thiserror = "1.0.44"
 tokio = { version = "1.43.1", features = ["full"] }
-tower = { version = "0.4", features = ["full"] }
-tower-http = { version = "0.4", features = ["full"] }
-tower_governor = { version = "0.0.4" }
-tracing = { version = "0.1.37" }
-tracing-subscriber = { version = "0.3.20", features = ["json"] }
-uuid = { version = "1.4.0", features = ["v4", "fast-rng"] }
+tower-http = { version = "0.5", features = ["trace", "cors", "compression-zstd"] }
+tower_governor = "0.3"
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.20", features = ["json", "env-filter"] }
+url = "2.5"
+uuid = { version = "1.4.0", features = ["v4", "fast-rng", "serde"] }
 
-# Test dependencies
 [dev-dependencies]
 tempfile = "3.10.1"
-tokio-test = "0.4.3"
-
-
-

@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.0.0] - 2026-05-22
+
+Full rewrite. Public endpoints, response shapes, job status values, and signer
+representations are preserved; everything below the handler boundary is new.
+
+### Added
+
+- **`GET /resolve-hash/:hash`**: content-addressed lookup against the `builds`
+  directory.
+- **Typed request inputs**: `ProgramId`, `Signer`, `RepositoryUrl`, `WebhookUrl`,
+  `SearchQuery` newtypes parse and validate at the deserialization boundary.
+
+### Changed
+
+- **Storage layout** collapsed from `(solana_program_builds, verified_programs,
+  program_authority)` + Redis to `(builds, program_state, build_logs)`. Build
+  result lives on the same row as the job; per-program cached state lives in
+  `program_state`. Reads never hit RPC.
+- **`POST /unverify`** semantics: refresh `program_state.on_chain_hash` for the
+  upgraded program. Whether a program is currently verified is computed from
+  state vs. the latest matching build.
+- **Background jobs**: single periodic sweep refreshes the oldest `program_state`
+  rows; webhook handlers provide the fast path. The `/health/background-jobs`
+  endpoint reports the timestamp of the most recent state refresh.
+- **Dependencies**: dropped `diesel`, `diesel-async`, `redis`; added `sqlx`,
+  `url`. `axum` bumped to 0.7.
+
+### Removed
+
+- **Redis**: not replaced.
+- **Diesel**: replaced by `sqlx`.
+- **`VerificationResponseBuilder`** and similar over-abstractions: replaced by
+  plain struct literals.
+- **Background-job manager as a separate service**: now a single sweep task.
+
 ## [1.5.3] - 2026-04-06
 
 ### Added
