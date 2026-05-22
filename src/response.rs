@@ -1,63 +1,15 @@
-//! Wire response shapes. Pin the pre-rewrite JSON output byte for byte;
-//! handlers convert from domain types ([`crate::db::BuildRow`] etc.) at the
-//! boundary.
-
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerificationResponse {
-    pub is_verified: bool,
-    pub on_chain_hash: String,
-    pub executable_hash: String,
-    pub repo_url: String,
-    pub commit: String,
-    pub last_verified_at: Option<NaiveDateTime>,
-    pub is_frozen: bool,
-    pub is_closed: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VerificationResponseWithSigner {
-    pub signer: String,
-    #[serde(flatten)]
-    pub verification_response: VerificationResponse,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StatusResponse {
-    pub is_verified: bool,
-    pub message: String,
-    pub on_chain_hash: String,
-    pub executable_hash: String,
-    pub repo_url: String,
-    pub commit: String,
-    pub last_verified_at: Option<NaiveDateTime>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ExtendedStatusResponse {
-    #[serde(flatten)]
-    pub status: StatusResponse,
-    pub is_frozen: bool,
-    pub is_closed: bool,
-}
-
-/// `request_id` is the build UUID the caller polls `/job/:id` with.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VerifyResponse {
-    pub status: String,
-    pub request_id: String,
-    pub message: String,
-}
-
 /// Lifecycle state of a verification job. `Unused` is legacy; new jobs are
 /// only ever `InProgress` / `Completed` / `Failed`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum JobStatus {
     InProgress,
     Completed,
     Failed,
+    #[serde(rename = "un-used")]
     Unused,
 }
 
@@ -83,44 +35,131 @@ impl From<JobStatus> for String {
     }
 }
 
-/// Hash/url fields are empty strings (not null) for in-progress or failed
-/// jobs — preserved from the legacy shape.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct JobVerificationResponse {
+/// Payload posted to webhook when verification completes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationWebhookPayload {
+    pub request_id: String,
     pub status: String,
-    pub message: String,
-    pub on_chain_hash: String,
-    pub executable_hash: String,
-    pub repo_url: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PaginationMeta {
-    pub total: i64,
-    pub page: i64,
-    pub total_pages: i64,
-    pub items_per_page: i64,
-    pub has_next_page: bool,
-    pub has_prev_page: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VerifiedProgramListResponse {
-    pub meta: PaginationMeta,
-    pub verified_programs: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_verified: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub program_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on_chain_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executable_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified_at: Option<NaiveDateTime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
+/// Response structure for program verification status
+/// Contains all the necessary information about a program's verification state
 #[derive(Debug, Serialize, Deserialize)]
-pub struct VerifiedProgramStatusResponse {
-    pub program_id: String,
+pub struct VerificationResponse {
+    /// Indicates if the program is currently verified
     pub is_verified: bool,
-    pub message: String,
+    /// The hash of the program as it exists on the blockchain
     pub on_chain_hash: String,
+    /// The hash of the locally built executable
     pub executable_hash: String,
-    pub last_verified_at: Option<NaiveDateTime>,
+    /// URL of the GitHub repository containing the program's source code
     pub repo_url: String,
+    /// Git commit hash of the verified version
     pub commit: String,
+    /// Timestamp of when the program was last verified
+    pub last_verified_at: Option<NaiveDateTime>,
+    /// Indicates if the program is frozen (not upgradeable)
+    pub is_frozen: bool,
+    /// Indicates if the program is closed (program data account doesn't exist)
+    pub is_closed: bool,
+}
+
+impl VerificationResponse {
+    /// Creates a new builder for VerificationResponse
+    pub fn builder() -> VerificationResponseBuilder {
+        VerificationResponseBuilder::default()
+    }
+}
+
+/// Builder for VerificationResponse to reduce repetitive struct initialization
+#[derive(Default)]
+pub struct VerificationResponseBuilder {
+    is_verified: bool,
+    on_chain_hash: String,
+    executable_hash: String,
+    repo_url: String,
+    commit: String,
+    last_verified_at: Option<NaiveDateTime>,
+    is_frozen: bool,
+    is_closed: bool,
+}
+
+impl VerificationResponseBuilder {
+    pub fn with_is_verified(mut self, value: bool) -> Self {
+        self.is_verified = value;
+        self
+    }
+
+    pub fn with_on_chain_hash(mut self, value: impl Into<String>) -> Self {
+        self.on_chain_hash = value.into();
+        self
+    }
+
+    pub fn with_executable_hash(mut self, value: impl Into<String>) -> Self {
+        self.executable_hash = value.into();
+        self
+    }
+
+    pub fn with_repo_url(mut self, value: impl Into<String>) -> Self {
+        self.repo_url = value.into();
+        self
+    }
+
+    pub fn with_commit(mut self, value: impl Into<String>) -> Self {
+        self.commit = value.into();
+        self
+    }
+
+    pub fn with_last_verified_at(mut self, value: Option<NaiveDateTime>) -> Self {
+        self.last_verified_at = value;
+        self
+    }
+
+    pub fn with_is_frozen(mut self, value: bool) -> Self {
+        self.is_frozen = value;
+        self
+    }
+
+    pub fn with_is_closed(mut self, value: bool) -> Self {
+        self.is_closed = value;
+        self
+    }
+
+    pub fn build(self) -> VerificationResponse {
+        VerificationResponse {
+            is_verified: self.is_verified,
+            on_chain_hash: self.on_chain_hash,
+            executable_hash: self.executable_hash,
+            repo_url: self.repo_url,
+            commit: self.commit,
+            last_verified_at: self.last_verified_at,
+            is_frozen: self.is_frozen,
+            is_closed: self.is_closed,
+        }
+    }
+}
+
+/// Extends VerificationResponse with signer information
+/// Used when multiple signers can verify the same program
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerificationResponseWithSigner {
+    /// Public key of the signer who verified the program
+    pub signer: String,
+    /// The complete verification response data
+    #[serde(flatten)]
+    pub verification_response: VerificationResponse,
 }
 
 /// General API response status
@@ -144,6 +183,49 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
+/// Response structure for verification status checks
+/// Used when checking the current verification state of a program
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StatusResponse {
+    /// Current verification status of the program
+    pub is_verified: bool,
+    /// Human-readable status message
+    pub message: String,
+    /// Current on-chain hash of the program
+    pub on_chain_hash: String,
+    /// Hash of the locally built executable
+    pub executable_hash: String,
+    /// URL of the source code repository
+    pub repo_url: String,
+    /// Git commit hash of the current version
+    pub commit: String,
+    /// Timestamp of when the program was last verified
+    pub last_verified_at: Option<NaiveDateTime>,
+}
+
+/// Extended StatusResponse struct to return program frozen status
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExtendedStatusResponse {
+    #[serde(flatten)]
+    pub status: StatusResponse,
+    pub is_frozen: bool,
+    pub is_closed: bool,
+}
+
+/// Response structure for verification job status
+/// Used when checking the status of a verification job
+///
+/// `request_id` is the build UUID the caller polls `/job/:id` with.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifyResponse {
+    /// Current status of the verification job
+    pub status: String,
+    /// Unique identifier for tracking the verification job
+    pub request_id: String,
+    /// Human-readable status message for the job
+    pub message: String,
+}
+
 /// Wrapper for successful responses
 /// Allows for different types of success responses
 #[derive(Debug, Serialize, Deserialize)]
@@ -157,6 +239,13 @@ pub enum SuccessResponse {
     StatusAll(Vec<VerificationResponseWithSigner>),
 }
 
+/// Conversion implementations for ApiResponse
+impl From<StatusResponse> for SuccessResponse {
+    fn from(value: StatusResponse) -> Self {
+        Self::Status(value)
+    }
+}
+
 /// Main API response enum
 /// Encompasses all possible API response types
 #[derive(Debug, Serialize, Deserialize)]
@@ -166,15 +255,24 @@ pub enum ApiResponse {
     Error(ErrorResponse),
 }
 
+/// Conversion implementations for ApiResponse
 impl From<StatusResponse> for ApiResponse {
     fn from(value: StatusResponse) -> Self {
         Self::Success(SuccessResponse::Status(value))
     }
 }
 
+/// Conversion implementations for ApiResponse
 impl From<VerifyResponse> for ApiResponse {
     fn from(value: VerifyResponse) -> Self {
         Self::Success(SuccessResponse::Verify(value))
+    }
+}
+
+/// Conversion implementations for ApiResponse
+impl From<ErrorResponse> for ApiResponse {
+    fn from(value: ErrorResponse) -> Self {
+        Self::Error(value)
     }
 }
 
@@ -184,50 +282,103 @@ impl From<Vec<VerificationResponseWithSigner>> for ApiResponse {
     }
 }
 
-impl From<ErrorResponse> for ApiResponse {
-    fn from(value: ErrorResponse) -> Self {
-        Self::Error(value)
-    }
+/// Response structure for job verification status
+/// Used to report the status of a verification job
+///
+/// Hash/url fields are empty strings (not null) for in-progress or failed
+/// jobs — preserved from the legacy shape.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JobVerificationResponse {
+    /// Current status of the verification job
+    pub status: String,
+    /// Detailed message about the job status
+    pub message: String,
+    /// Current on-chain hash of the program
+    pub on_chain_hash: String,
+    /// Hash of the built executable
+    pub executable_hash: String,
+    /// URL of the source code repository
+    pub repo_url: String,
 }
 
-/// Path-extraction shape for status endpoints.
+/// Response structure for listing verified programs
+/// Used when retrieving all verified programs
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifiedProgramListResponse {
+    pub meta: PaginationMeta,
+    pub verified_programs: Vec<String>,
+    pub error: Option<String>,
+}
+
+/// Pagination metadata
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PaginationMeta {
+    pub total: i64,
+    pub page: i64,
+    pub total_pages: i64,
+    pub items_per_page: i64,
+    pub has_next_page: bool,
+    pub has_prev_page: bool,
+}
+
+/// Response structure for individual program status
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifiedProgramStatusResponse {
+    /// Program identifier
+    pub program_id: String,
+    /// Current verification status
+    pub is_verified: bool,
+    /// Status message
+    pub message: String,
+    /// Hash of the program on chain
+    pub on_chain_hash: String,
+    /// Hash of the executable
+    pub executable_hash: String,
+    /// Last verification timestamp
+    pub last_verified_at: Option<NaiveDateTime>,
+    /// Repository URL
+    pub repo_url: String,
+    /// Git commit hash
+    pub commit: String,
+}
+
+/// Response structure for list of program statuses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifiedProgramsStatusListResponse {
+    /// Operation status
+    pub status: Status,
+    /// List of program statuses
+    pub data: Option<Vec<VerifiedProgramStatusResponse>>,
+    /// Error message if any
+    pub error: Option<String>,
+}
+
+// --- v2 additions: extractor types + new endpoint responses ----------------
+
+/// Path-extraction shape for `/status/:address` and `/status-all/:address`.
 #[derive(Debug, Deserialize)]
 pub struct VerificationStatusParams {
     pub address: String,
 }
 
-/// Query-string shape for /verified-programs.
+/// Query-string shape for `/verified-programs[?search=]`.
 #[derive(Debug, Deserialize)]
 pub struct VerifiedProgramsQuery {
     #[serde(default)]
     pub search: Option<String>,
 }
 
+/// Health view for `/health/background-jobs`. `status` is one of
+/// `Active`/`Inactive`/`unknown`; field name preserved from the legacy
+/// `BackgroundJobManager` shape.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct VerifiedProgramsStatusListResponse {
-    pub status: Status,
-    pub data: Option<Vec<VerifiedProgramStatusResponse>>,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerificationWebhookPayload {
-    pub request_id: String,
+pub struct BackgroundJobHealth {
     pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_verified: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub program_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub on_chain_hash: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub executable_hash: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub verified_at: Option<NaiveDateTime>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    pub last_program_check: Option<NaiveDateTime>,
+    pub message: String,
 }
 
+/// Body of `GET /resolve-hash/:hash`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResolveHashResponse {
     pub executable_hash: String,
@@ -245,13 +396,4 @@ pub struct ResolveHashEntry {
     pub commit: Option<String>,
     pub completed_at: Option<NaiveDateTime>,
     pub is_currently_on_chain: bool,
-}
-
-/// `status` is one of `Active`/`Inactive`/`unknown`; field name preserved
-/// from the legacy `BackgroundJobManager` shape.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BackgroundJobHealth {
-    pub status: String,
-    pub last_program_check: Option<NaiveDateTime>,
-    pub message: String,
 }
