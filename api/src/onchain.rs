@@ -1,3 +1,5 @@
+//! Everything that touches the Solana chain.
+
 use crate::{config::CONFIG, error::ApiError, error::Result, rpc::rpc};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_account_decoder::parse_bpf_loader::{
@@ -17,12 +19,16 @@ use tracing::{error, warn};
 pub const OTTER_VERIFY_PROGRAM_ID: Pubkey =
     solana_sdk::pubkey!("verifycLy8mB96wd9wqq3WDXQwM4oU6r42Th37Db9fC");
 
+/// Whitelisted Otter Verify signers, tried in order when no explicit signer
+/// or program-authority claim exists.
 pub const SIGNER_KEYS: [Pubkey; 3] = [
     solana_sdk::pubkey!("9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU"),
     solana_sdk::pubkey!("CyJj5ejJAUveDXnLduJbkvwjxcmWJNqCuB9DR7AExrHn"),
     solana_sdk::pubkey!("5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r"),
 ];
 
+// Squads-frozen programs route the final upgrade through the Squads multisig;
+// the burned authority is the 5th account on this specific instruction.
 const SQUADS_PROGRAM_ID: &str = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
 const SQUADS_AUTHORITY_IX_DATA: &str = "ZTNTtVtnvbC";
 const SQUADS_AUTHORITY_ACCOUNT_INDEX: usize = 4;
@@ -34,6 +40,8 @@ pub struct ProgramOnchainState {
     pub is_closed: bool,
 }
 
+/// Borsh layout of an Otter Verify PDA. The leading 8-byte Anchor
+/// discriminator is stripped before calling `try_from_slice`.
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct OtterBuildParams {
     pub address: Pubkey,
@@ -41,6 +49,8 @@ pub struct OtterBuildParams {
     pub version: String,
     pub git_url: String,
     pub commit: String,
+    /// Raw `solana-verify verify-from-repo` argv. Accessor methods below
+    /// decode the flags we care about.
     pub args: Vec<String>,
     pub deployed_slot: u64,
     bump: u8,
@@ -72,12 +82,16 @@ impl OtterBuildParams {
         self.arg_after(&["--arch"])
     }
 
+    /// Everything after the first `--`.
     pub fn cargo_args(&self) -> Option<Vec<String>> {
         let pos = self.args.iter().position(|a| a == "--")?;
         Some(self.args[pos + 1..].to_vec())
     }
 }
 
+/// Looks up `(authority, is_frozen, is_closed)` for a program. For frozen
+/// programs the authority is recovered from the last transaction on the
+/// program-data PDA (Squads-shaped freezes are decoded specially).
 pub async fn get_program_state(program_id: &Pubkey) -> Result<ProgramOnchainState> {
     rpc()
         .run(|c| {
@@ -208,6 +222,8 @@ async fn fetch_program_state(
     })
 }
 
+/// "Closed" covers both shapes the BPF loader leaves behind: account gone
+/// (`AccountNotFound`) and zero-lamport account owned by the system program.
 async fn is_account_closed(client: &RpcClient, pubkey: &Pubkey) -> Result<bool> {
     match client.get_account(pubkey).await {
         Ok(a) => Ok(a.lamports == 0 && a.owner == system_program::ID),
@@ -221,6 +237,7 @@ async fn is_account_closed(client: &RpcClient, pubkey: &Pubkey) -> Result<bool> 
     }
 }
 
+/// Seeds: `("otter_verify", signer, program)`.
 pub async fn get_otter_pda(
     client: &RpcClient,
     signer: &Pubkey,
@@ -233,6 +250,8 @@ pub async fn get_otter_pda(
         .map_err(|e| ApiError::Internal(format!("deserialize PDA: {e}")))
 }
 
+/// Resolution order: `explicit_signer`, then the program's current upgrade
+/// `authority`, then [`SIGNER_KEYS`] in order. `NotFound` if none has a PDA.
 pub async fn get_otter_verify_params(
     program: &Pubkey,
     explicit_signer: Option<Pubkey>,
@@ -271,6 +290,9 @@ pub async fn get_otter_verify_params(
         .await
 }
 
+/// Shells out to `solana-verify get-program-hash`. Retries transient
+/// failures 3x with exponential backoff; "program appears to be closed"
+/// returns immediately since the caller wants to act on it.
 pub async fn get_on_chain_hash(program_id: &str) -> Result<String> {
     let mut cmd = Command::new("solana-verify");
     cmd.arg("get-program-hash")
@@ -320,6 +342,9 @@ async fn exec_hash_cmd(cmd: &mut Command) -> Result<String> {
         .ok_or_else(|| ApiError::Internal("no hash in command output".into()))
 }
 
+/// Used after a build failure to distinguish "real failure" from "program
+/// was closed mid-build". Conservative on errors — anything other than
+/// `AccountNotFound` returns false.
 pub async fn is_program_buffer_missing(program_id: &Pubkey) -> bool {
     let buffer =
         Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id()).0;
@@ -346,6 +371,8 @@ pub async fn is_program_buffer_missing(program_id: &Pubkey) -> bool {
     }
 }
 
+/// Appends `/tree/<commit>` when there's a commit. The literal string
+/// `"None"` is treated as no commit (it shows up in old PDA data).
 pub fn build_repo_url(repo: &str, commit: Option<&str>) -> String {
     match commit {
         Some(c) if !c.is_empty() && c != "None" => {
@@ -355,6 +382,7 @@ pub fn build_repo_url(repo: &str, commit: Option<&str>) -> String {
     }
 }
 
+/// Pulls the value out of a `<prefix> <hash>` line in `solana-verify` stdout.
 pub fn extract_hash_with_prefix(text: &str, prefix: &str) -> Option<String> {
     text.lines()
         .find(|l| l.starts_with(prefix))

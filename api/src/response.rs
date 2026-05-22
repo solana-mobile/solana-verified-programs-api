@@ -1,3 +1,7 @@
+//! Wire response shapes. Pin the pre-rewrite JSON output byte for byte;
+//! handlers convert from domain types ([`crate::db::BuildRow`] etc.) at the
+//! boundary.
+
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
@@ -39,6 +43,7 @@ pub struct ExtendedStatusResponse {
     pub is_closed: bool,
 }
 
+/// `request_id` is the build UUID the caller polls `/job/:id` with.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VerifyResponse {
     pub status: String,
@@ -46,6 +51,8 @@ pub struct VerifyResponse {
     pub message: String,
 }
 
+/// Hash/url fields are empty strings (not null) for in-progress or failed
+/// jobs — preserved from the legacy shape.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JobVerificationResponse {
     pub status: String,
@@ -84,6 +91,7 @@ pub struct VerifiedProgramStatusResponse {
     pub commit: String,
 }
 
+/// Serialized as `"success"`/`"error"`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
@@ -122,6 +130,8 @@ pub struct ResolveHashResponse {
     pub builds: Vec<ResolveHashEntry>,
 }
 
+/// `is_currently_on_chain` is true when this build's hash matches its
+/// program's cached `on_chain_hash`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResolveHashEntry {
     pub build_id: String,
@@ -133,6 +143,8 @@ pub struct ResolveHashEntry {
     pub is_currently_on_chain: bool,
 }
 
+/// `status` is one of `Active`/`Inactive`/`unknown`; field name preserved
+/// from the legacy `BackgroundJobManager` shape.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BackgroundJobHealth {
     pub status: String,

@@ -1,3 +1,5 @@
+//! GET handlers — pure DB reads. Freshness is the sweep + webhooks' job.
+
 use crate::{
     db::{BuildRow, Db, ProgramStateRow, PER_PAGE},
     error::{ApiError, Result},
@@ -22,6 +24,8 @@ use std::str::FromStr;
 use tracing::info;
 use uuid::Uuid;
 
+/// `search` is parsed into a [`SearchQuery`] inside the handler so the
+/// rejection shape matches the rest of the listing response.
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
     #[serde(default)]

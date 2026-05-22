@@ -1,3 +1,5 @@
+//! Spawning and lifecycle of `solana-verify` builds.
+
 use crate::{
     config::CONFIG,
     db::{Db, NewBuild},
@@ -20,6 +22,7 @@ use uuid::Uuid;
 const WEBHOOK_RETRIES: u32 = 3;
 const WEBHOOK_RETRY_DELAY: Duration = Duration::from_millis(2000);
 
+/// `is_verified` is false if either hash is missing.
 #[derive(Debug, Clone)]
 pub struct VerifyOutcome {
     pub on_chain_hash: String,
@@ -27,6 +30,8 @@ pub struct VerifyOutcome {
     pub is_verified: bool,
 }
 
+/// The Otter Verify PDA — not the request body — is the source of truth for
+/// build parameters. `explicit_signer` pins which claim to use when set.
 pub async fn resolve_build_params(
     program_id: &ProgramId,
     explicit_signer: Option<Pubkey>,
@@ -70,6 +75,9 @@ fn build_from_pda(p: &OtterBuildParams, signer: &str) -> NewBuild {
     }
 }
 
+/// Runs `solana-verify verify-from-repo` once and parses the output. On
+/// failure, writes the logs to disk. Does NOT update the `builds` row —
+/// callers do that themselves, or use [`execute`] which handles both.
 pub async fn run_build(build_id: Uuid, params: &NewBuild, db: &Db) -> Result<VerifyOutcome> {
     let log_id = Uuid::new_v4().to_string();
     info!(
@@ -155,6 +163,7 @@ fn build_command(p: &NewBuild) -> Command {
     cmd
 }
 
+/// End-to-end async build. What gets `tokio::spawn`ed by the verify handlers.
 pub async fn execute(build_id: Uuid, params: NewBuild, db: Db, webhook_url: Option<String>) {
     let program_id = params.program_id.clone();
     let result = run_build(build_id, &params, &db).await;

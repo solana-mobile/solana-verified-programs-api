@@ -1,3 +1,5 @@
+//! Round-robin RPC client pool that rotates on rate-limit-shaped errors.
+
 use crate::{config::CONFIG, error::ApiError, error::Result};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use std::sync::Arc;
@@ -42,6 +44,8 @@ impl RpcManager {
         Arc::new(RpcClient::new(self.urls[*i].clone()))
     }
 
+    /// Retries `op` against the next URL on rate-limit-shaped errors only.
+    /// `op` may run more than once, so it must be idempotent.
     pub async fn run<F, Fut, T>(&self, op: F) -> Result<T>
     where
         F: Fn(Arc<RpcClient>) -> Fut + Send + Sync,

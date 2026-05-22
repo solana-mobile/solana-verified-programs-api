@@ -1,3 +1,6 @@
+//! Single error enum the whole API returns. The wire body is always
+//! `{"status": "error", "error": "<msg>"}`.
+
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -8,18 +11,22 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ApiError {
+    /// Malformed input — 400.
     #[error("{0}")]
     BadRequest(String),
 
+    /// Missing — 404.
     #[error("{0}")]
     NotFound(String),
 
     #[error(transparent)]
     Db(#[from] sqlx::Error),
 
+    /// RPC failure (or all configured RPCs were rate-limited).
     #[error("rpc: {0}")]
     Rpc(String),
 
+    /// `solana-verify` exited non-zero; the message carries its stdout.
     #[error("build failed: {0}")]
     Build(String),
 

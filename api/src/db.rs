@@ -1,3 +1,7 @@
+//! Postgres data layer. Two tables of substance: `builds` (one row per
+//! verification attempt — job + result merged) and `program_state` (one
+//! cached row per program). Reads never call out to the chain.
+
 use crate::{error::ApiError, error::Result, onchain::ProgramOnchainState, types::ProgramId};
 use chrono::{DateTime, Utc};
 use sqlx::{
@@ -15,7 +19,7 @@ pub const BUILD_STATUS_FAILED: &str = "failed";
 
 #[derive(Clone)]
 pub struct Db {
-    pub pool: PgPool,
+    pool: PgPool,
 }
 
 impl Db {
@@ -34,6 +38,12 @@ impl Db {
             .await
             .map_err(|e| ApiError::Internal(format!("migration: {e}")))?;
         info!("migrations applied");
+        Ok(())
+    }
+
+    /// Cheap connectivity check for the health endpoint.
+    pub async fn ping(&self) -> Result<()> {
+        sqlx::query("SELECT 1").execute(&self.pool).await?;
         Ok(())
     }
 }
@@ -105,6 +115,7 @@ impl ProgramStateRow {
     }
 }
 
+/// Identifying parameters for a build, before insertion.
 #[derive(Debug, Clone)]
 pub struct NewBuild {
     pub repository: String,
@@ -180,9 +191,9 @@ impl Db {
         Ok(row.as_ref().map(BuildRow::from_row))
     }
 
+    /// Most recent non-failed build with identical params. Failed rows are
+    /// ignored — they're retryable.
     pub async fn find_duplicate(&self, b: &NewBuild) -> Result<Option<BuildRow>> {
-        // Find a build that matches identifying params and is not in failed status.
-        // Returns the most recent matching row.
         let row = sqlx::query(
             "SELECT * FROM builds
              WHERE program_id = $1
@@ -214,13 +225,15 @@ impl Db {
         Ok(row.as_ref().map(BuildRow::from_row))
     }
 
+    /// Prefers a build whose `executable_hash` matches `prefer_hash`, falling
+    /// back to the latest completed build of any hash. The fallback keeps
+    /// `/status` responses carrying repo/commit data after an upgrade.
     pub async fn latest_completed_build(
         &self,
         program_id: &ProgramId,
         prefer_hash: Option<&str>,
     ) -> Result<Option<BuildRow>> {
         let pid = program_id.as_str();
-        // Prefer a build whose executable_hash matches the current on-chain hash.
         let row = sqlx::query(
             "SELECT * FROM builds
              WHERE program_id = $1 AND status = 'completed'
@@ -234,6 +247,7 @@ impl Db {
         Ok(row.as_ref().map(BuildRow::from_row))
     }
 
+    /// One row per signer — the signer's most recent completed claim.
     pub async fn completed_builds_by_signer(
         &self,
         program_id: &ProgramId,
@@ -270,6 +284,9 @@ impl Db {
         Ok(row.as_ref().map(ProgramStateRow::from_row))
     }
 
+    /// A `None` hash preserves the existing value rather than clobbering it,
+    /// so a failed hash fetch alongside a successful authority lookup
+    /// doesn't lose the previous hash.
     pub async fn upsert_program_state(
         &self,
         program_id: &str,
@@ -297,6 +314,8 @@ impl Db {
         Ok(())
     }
 
+    /// Single-field write. Leaves authority/frozen/closed alone for the
+    /// sweep to manage.
     pub async fn set_program_on_chain_hash(
         &self,
         program_id: &str,
@@ -329,6 +348,8 @@ impl Db {
         Ok(())
     }
 
+    /// `search` is the raw needle (empty disables filtering), matched against
+    /// `program_id` and `repository`.
     pub async fn verified_programs_page(
         &self,
         page: i64,
@@ -378,7 +399,6 @@ impl Db {
     }
 
     pub async fn verified_programs_with_state(&self) -> Result<Vec<(BuildRow, ProgramStateRow)>> {
-        // For each verified (matching exec hash) program, return the latest build + state.
         let rows = sqlx::query(
             "SELECT b.*, ps.program_id as ps_program_id, ps.on_chain_hash as ps_on_chain_hash,
                     ps.authority as ps_authority, ps.is_frozen as ps_is_frozen,
@@ -425,6 +445,7 @@ impl Db {
         Ok(ids)
     }
 
+    /// Proxy for "is the sweep still running" — used by the health endpoints.
     pub async fn last_sweep_at(&self) -> Result<Option<DateTime<Utc>>> {
         let v: Option<DateTime<Utc>> =
             sqlx::query_scalar("SELECT MAX(last_checked) FROM program_state")

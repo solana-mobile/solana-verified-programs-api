@@ -82,7 +82,7 @@ pub async fn index() -> Json<Value> {
 }
 
 pub async fn health(State(db): State<Db>) -> (StatusCode, Json<Value>) {
-    let db_ok = sqlx::query("SELECT 1").execute(&db.pool).await.is_ok();
+    let db_ok = db.ping().await.is_ok();
     let last = db.last_sweep_at().await.ok().flatten();
     let now = chrono::Utc::now();
     let interval = chrono::Duration::seconds(crate::config::CONFIG.sweep_interval_seconds as i64);

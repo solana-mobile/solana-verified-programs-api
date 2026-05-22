@@ -1,3 +1,6 @@
+//! Periodic refresh of `program_state` rows — the slow path; webhooks are
+//! the fast path.
+
 use crate::{
     config::CONFIG,
     db::Db,

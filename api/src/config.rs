@@ -1,10 +1,14 @@
 use serde::Deserialize;
 
+/// Field names map 1:1 to upper-cased env vars.
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub database_url: String,
     pub rpc_url: String,
+    /// Comma-separated fallback RPCs for [`crate::rpc::RpcManager`] rotation.
+    /// Falls back to a single-element list containing `rpc_url` when unset.
     pub rpc_urls: Option<String>,
+    /// Shared secret webhook callers must pass in `Authorization`.
     pub auth_secret: String,
     pub port: u16,
     #[serde(default = "default_sweep_interval")]

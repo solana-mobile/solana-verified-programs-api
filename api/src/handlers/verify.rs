@@ -12,9 +12,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use tracing::info;
 
-// Body fields beyond program_id/signer are validated for shape but the actual
-// build config comes from the on-chain Otter Verify PDA — match the existing
-// API contract where the request body is a sanity check.
+/// Only `program_id` / `signer` / `webhook_url` drive behaviour; the rest is
+/// validated for shape and otherwise ignored in favour of the on-chain PDA.
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 pub struct VerifyRequest {
@@ -73,6 +72,9 @@ pub async fn verify_with_signer(
     start_async(db, build_params, webhook).await
 }
 
+/// Returns a [`StatusResponse`] on a fresh/completed build, or a
+/// [`VerifyResponse`] when an in-progress duplicate is found — those shapes
+/// are distinct, hence the `Value` return.
 pub async fn verify_sync(
     State(db): State<Db>,
     Json(req): Json<VerifyRequest>,

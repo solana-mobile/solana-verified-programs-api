@@ -1,7 +1,11 @@
+//! Validated request inputs. Constructors and `Deserialize` impls do all
+//! parsing — once you hold one of these, the value is already valid.
+
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use solana_sdk::pubkey::Pubkey;
 use std::{fmt, str::FromStr};
 
+/// A Solana program address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProgramId(pub Pubkey);
 
@@ -44,6 +48,9 @@ impl<'de> Deserialize<'de> for ProgramId {
     }
 }
 
+/// A Solana account that signed an Otter Verify PDA entry. Same parsing
+/// rules as [`ProgramId`]; the distinct type keeps signers and programs from
+/// being mixed up at call sites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Signer(pub Pubkey);
 
@@ -74,6 +81,7 @@ impl<'de> Deserialize<'de> for Signer {
     }
 }
 
+/// `https://` URL (or `http://` for loopback hosts only).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepositoryUrl(String);
 
@@ -128,6 +136,8 @@ impl<'de> Deserialize<'de> for RepositoryUrl {
     }
 }
 
+/// URL the API will POST verification results to. Same scheme rules as
+/// [`RepositoryUrl`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WebhookUrl(String);
 
@@ -158,6 +168,8 @@ impl<'de> Deserialize<'de> for WebhookUrl {
     }
 }
 
+/// Empty means "no filter"; non-empty must look like a program address or
+/// URL — the listing query ILIKEs against both `program_id` and `repository`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchQuery(String);
 

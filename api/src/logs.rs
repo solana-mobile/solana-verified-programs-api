@@ -1,3 +1,6 @@
+//! Build logs written to `/logs` (mounted from the host). The configured RPC
+//! URL is scrubbed before writing so private RPC keys don't land on disk.
+
 use crate::{config::CONFIG, error::Result};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -22,6 +25,8 @@ pub async fn write(file_id: &str, stderr: &str, stdout: &str) -> Result<()> {
     Ok(())
 }
 
+/// Returns the stub `{ error }` shape when both files are empty — matches
+/// the previous handler's wire format.
 pub async fn read(file_id: &str) -> Value {
     let stderr = fs::read_to_string(log_path(file_id, "err"))
         .await
