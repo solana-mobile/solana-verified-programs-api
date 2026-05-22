@@ -66,7 +66,7 @@ static LANDING_HTML: &str = r#"<!doctype html>
 "#;
 
 /// Simple landing page for https://verify.osec.io
-pub async fn landing() -> Html<&'static str> {
+pub fn landing_page() -> Html<&'static str> {
     Html(LANDING_HTML)
 }
 
@@ -76,7 +76,7 @@ pub async fn landing() -> Html<&'static str> {
 ///
 /// # Returns
 /// * `Json<Value>` - JSON response containing API endpoint documentation
-pub async fn endpoints() -> Json<Value> {
+pub fn index() -> Json<Value> {
     let value = INDEX_JSON.get_or_init(|| {
         json!({
             "endpoints": [

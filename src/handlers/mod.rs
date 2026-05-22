@@ -1,32 +1,55 @@
-pub mod async_verify;
-pub mod health;
-pub mod index;
-pub mod job_status;
-pub mod logs;
-pub mod pda_worker;
-pub mod resolve_hash;
-pub mod sync_verify;
-pub mod unverify;
+//! API request handlers for the verification service.
+//! Each module corresponds to a specific API endpoint or related group of endpoints.
+
+// Verification-related handlers
+pub mod async_verify; // Asynchronous program verification
+pub mod sync_verify; // Synchronous program verification
+pub mod unverify; // Program unverification
 pub mod verification_status;
-pub mod verified_programs_list;
-pub mod verified_programs_status;
-pub mod verify_helpers;
+pub mod verify_helpers; // Shared verification utilities // Program verification status
+
+// Status and information handlers
+pub mod health; // Health check and background job status
+pub mod job_status; // Build job status
+pub mod logs; // Build logs retrieval
+pub mod pda_worker;
+pub mod verified_programs_list; // List of verified programs
+pub mod verified_programs_status; // Status of verified programs // PDA updates/creations
+
+// v2 additions
+pub mod index; // Landing page + /api endpoint catalogue
+pub mod resolve_hash; // GET /resolve-hash/:hash
+
+// Re-export handlers for easier access
+pub(crate) use async_verify::{process_async_verification, process_async_verification_with_signer};
+use axum::http::{HeaderMap, StatusCode};
+pub(crate) use health::{background_job_status, health_check};
+pub(crate) use job_status::get_job_status;
+pub(crate) use logs::get_build_logs;
+pub(crate) use pda_worker::handle_pda_updates_creations;
+pub(crate) use sync_verify::process_sync_verification;
+pub(crate) use unverify::handle_unverify;
+pub(crate) use verification_status::{get_verification_status, get_verification_status_all};
+pub(crate) use verified_programs_list::{
+    get_verified_programs_list, get_verified_programs_list_paginated,
+};
+pub(crate) use verified_programs_status::get_verified_programs_status;
 
 use crate::CONFIG;
-use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
 use serde_json::Value;
 
-/// Constant-equality check against [`crate::config::Config::auth_secret`].
+/// Validates the authorization header against the configured secret
 pub fn is_authorized(headers: &HeaderMap) -> bool {
     headers
         .get("AUTHORIZATION")
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v == CONFIG.auth_secret)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|header_value| header_value == CONFIG.auth_secret)
 }
 
 /// Subset of Helius's parsed-transaction payload we actually look at. Extra
-/// fields are ignored by serde's default behaviour.
+/// fields are ignored by serde's default behaviour. Lives here on the v2
+/// side; in the legacy crate this sat in `db/models/`.
 #[derive(Debug, Deserialize)]
 pub struct HeliusParsedTransaction {
     pub instructions: Vec<Instruction>,
@@ -49,4 +72,3 @@ pub(crate) fn parse_helius_transaction(
     serde_json::from_value(payload[0].clone())
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid payload"))
 }
-
