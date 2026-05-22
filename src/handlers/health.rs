@@ -33,9 +33,7 @@ pub async fn health(State(db): State<Db>) -> (StatusCode, Json<Value>) {
 }
 
 /// `GET /health/background-jobs` — last sweep timestamp + liveness verdict.
-pub async fn background_jobs(
-    State(db): State<Db>,
-) -> (StatusCode, Json<BackgroundJobHealth>) {
+pub async fn background_jobs(State(db): State<Db>) -> (StatusCode, Json<BackgroundJobHealth>) {
     let last = db.last_sweep_at().await.ok().flatten();
     let now = chrono::Utc::now();
     let interval = chrono::Duration::seconds(crate::config::CONFIG.sweep_interval_seconds as i64);

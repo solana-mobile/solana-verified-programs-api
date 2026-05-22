@@ -1,3 +1,11 @@
+-- Collapse the legacy three-table layout into the rewrite's two-table layout.
+-- Existing data is dropped; the rewrite assumes a fresh DB (data migration is a
+-- separate concern, tracked elsewhere).
+DROP TABLE IF EXISTS verified_programs CASCADE;
+DROP TABLE IF EXISTS solana_program_builds CASCADE;
+DROP TABLE IF EXISTS program_authority CASCADE;
+DROP TABLE IF EXISTS build_logs CASCADE;
+
 CREATE TABLE builds (
     id                UUID PRIMARY KEY,
     repository        TEXT NOT NULL,
@@ -16,7 +24,6 @@ CREATE TABLE builds (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at      TIMESTAMPTZ
 );
-
 CREATE INDEX builds_executable_hash_idx ON builds (executable_hash) WHERE status = 'completed';
 CREATE INDEX builds_program_id_created_idx ON builds (program_id, created_at DESC);
 CREATE INDEX builds_program_completed_idx ON builds (program_id, completed_at DESC) WHERE status = 'completed';
@@ -29,7 +36,6 @@ CREATE TABLE program_state (
     is_closed     BOOLEAN NOT NULL DEFAULT FALSE,
     last_checked  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE INDEX program_state_last_checked_idx ON program_state (last_checked ASC);
 
 CREATE TABLE build_logs (
@@ -38,5 +44,4 @@ CREATE TABLE build_logs (
     file_name    TEXT NOT NULL,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE INDEX build_logs_program_idx ON build_logs (program_id, created_at DESC);

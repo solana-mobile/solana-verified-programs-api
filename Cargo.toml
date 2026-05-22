@@ -7,6 +7,9 @@ edition = "2021"
 axum = "0.7"
 borsh = "1.5.1"
 chrono = { version = "0.4.35", features = ["serde"] }
+diesel = { version = "2.2.6", features = ["postgres", "chrono", "uuid"] }
+diesel-async = { version = "0.5.2", features = ["postgres", "deadpool"] }
+diesel_migrations = { version = "2.2", features = ["postgres"] }
 dotenv = "0.15"
 envy = "0.4.2"
 hex = "0.4"
@@ -20,7 +23,6 @@ solana-client = "3.1.8"
 solana-sdk = "4.0.0"
 solana-sdk-ids = "3.1.0"
 solana-transaction-status = "3.1.8"
-sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls", "chrono", "uuid", "macros", "migrate"] }
 thiserror = "1.0.44"
 tokio = { version = "1.43.1", features = ["full"] }
 tower-http = { version = "0.5", features = ["trace", "cors", "compression-zstd"] }

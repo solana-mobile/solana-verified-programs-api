@@ -19,9 +19,6 @@ pub enum ApiError {
     #[error("{0}")]
     NotFound(String),
 
-    #[error(transparent)]
-    Db(#[from] sqlx::Error),
-
     /// RPC failure (or all configured RPCs were rate-limited).
     #[error("rpc: {0}")]
     Rpc(String),

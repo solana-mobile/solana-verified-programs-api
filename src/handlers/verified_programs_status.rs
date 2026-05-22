@@ -8,9 +8,7 @@ use crate::{
 };
 use axum::{extract::State, http::StatusCode, Json};
 
-pub async fn all(
-    State(db): State<Db>,
-) -> (StatusCode, Json<VerifiedProgramsStatusListResponse>) {
+pub async fn all(State(db): State<Db>) -> (StatusCode, Json<VerifiedProgramsStatusListResponse>) {
     match db.currently_verified_builds().await {
         Ok(builds) => {
             // Every row here passed the join filter, so is_verified is always

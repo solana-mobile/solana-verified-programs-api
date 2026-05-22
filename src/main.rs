@@ -10,6 +10,7 @@ mod onchain;
 mod response;
 mod routes;
 mod rpc;
+mod schema;
 mod sweep;
 mod types;
 
@@ -24,10 +25,12 @@ async fn main() {
         )
         .init();
 
-    let db = db::Db::connect(&CONFIG.database_url)
+    let db = db::Db::connect(&CONFIG.database_url, CONFIG.db_max_connections as usize)
         .await
         .expect("connect db");
-    db.migrate().await.expect("apply migrations");
+    db.migrate(&CONFIG.database_url)
+        .await
+        .expect("apply migrations");
 
     sweep::spawn(db.clone());
 

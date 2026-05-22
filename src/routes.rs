@@ -59,7 +59,10 @@ pub fn build(db: Db) -> Router {
     let verify_group: Router<Db> = maybe_rl!(
         Router::new()
             .route("/verify", post(async_verify::verify))
-            .route("/verify-with-signer", post(async_verify::verify_with_signer))
+            .route(
+                "/verify-with-signer",
+                post(async_verify::verify_with_signer)
+            )
             .route("/verify_sync", post(sync_verify::verify_sync)),
         30,
         1

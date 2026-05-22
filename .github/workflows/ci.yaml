@@ -43,21 +43,13 @@ jobs:
         with:
           tool: cargo-machete
 
+      - name: Install libpq (needed for diesel)
+        run: sudo apt-get install -y libpq-dev
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Verify .sqlx/ is in sync with the source
-        env:
-          SQLX_OFFLINE: "true"
-        run: |
-          # Re-issuing prepare requires a live DB; instead, just confirm the
-          # offline cache parses and compilation succeeds without DATABASE_URL.
-          test -d .sqlx
-          ls .sqlx/*.json > /dev/null
-
       - name: Run clippy
-        env:
-          SQLX_OFFLINE: "true"
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Check dependency sort
@@ -72,5 +64,4 @@ jobs:
           DATABASE_URL: postgres://dummy:dummy@localhost/dummy
           AUTH_SECRET: dummy-secret
           PORT: "8080"
-          SQLX_OFFLINE: "true"
         run: cargo test
