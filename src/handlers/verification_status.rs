@@ -1,118 +1,153 @@
-//! `GET /status/:address` and `GET /status-all/:address`.
-
-use crate::{
-    db::{BuildRow, Db},
-    error::Result,
-    handlers::{status_message, verify_helpers::validate_program_id},
-    onchain::build_repo_url,
-    response::{
-        ExtendedStatusResponse, StatusResponse, VerificationResponse,
-        VerificationResponseWithSigner,
-    },
+use crate::db::Db;
+use crate::response::{
+    ApiResponse, ErrorResponse, ExtendedStatusResponse, Status, StatusResponse, SuccessResponse,
+    VerificationStatusParams,
 };
-use axum::{
-    Json,
-    extract::{Path, State},
-};
+use crate::validation;
+use axum::Json;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use tracing::{error, info};
 
-pub async fn status(
+/// Handler for checking if a specific program is verified
+///
+/// # Endpoint: GET /status/:address
+///
+/// # Arguments
+/// * `db` - Database client from application state
+/// * `address` - Program address to check verification status
+///
+/// # Returns
+/// * `(StatusCode, Json<ExtendedStatusResponse>)` - HTTP status and verification status details
+pub(crate) async fn get_verification_status(
     State(db): State<Db>,
-    Path(address): Path<String>,
-) -> Result<Json<ExtendedStatusResponse>> {
-    let program_id = validate_program_id(&address)?;
-    let state = db
-        .get_program_state(&program_id.to_string())
-        .await
-        .ok()
-        .flatten();
-    let on_chain_hash = state
-        .as_ref()
-        .and_then(|s| s.on_chain_hash.clone())
-        .unwrap_or_default();
-    let is_frozen = state.as_ref().is_some_and(|s| s.is_frozen);
-    let is_closed = state.as_ref().is_some_and(|s| s.is_closed);
-    // best_build needs the on-chain hash to break ties when multiple
-    // completed builds exist (post-upgrade history). Sequential is the
-    // simplest correct shape.
-    let build = db
-        .best_build(&program_id.to_string(), Some(on_chain_hash.as_str()))
-        .await
-        .ok()
-        .flatten();
+    Path(VerificationStatusParams { address }): Path<VerificationStatusParams>,
+) -> (StatusCode, Json<ExtendedStatusResponse>) {
+    if let Err(e) = validation::validate_pubkey(&address) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ExtendedStatusResponse {
+                status: StatusResponse {
+                    is_verified: false,
+                    message: e,
+                    on_chain_hash: String::new(),
+                    last_verified_at: None,
+                    executable_hash: String::new(),
+                    repo_url: String::new(),
+                    commit: String::new(),
+                },
+                is_frozen: false,
+                is_closed: false,
+            }),
+        );
+    }
 
-    let status = match build {
-        Some(b) => {
-            let is_verified = !on_chain_hash.is_empty()
-                && b.executable_hash.as_deref() == Some(on_chain_hash.as_str())
-                && !is_closed;
-            StatusResponse {
-                is_verified,
-                message: status_message(is_verified),
-                on_chain_hash,
-                executable_hash: b.executable_hash.unwrap_or_default(),
-                repo_url: build_repo_url(&b.repository, b.commit_hash.as_deref()),
-                commit: b.commit_hash.unwrap_or_default(),
-                last_verified_at: b.completed_at.map(|t| t.naive_utc()),
-            }
+    info!("Checking verification status for program: {}", address);
+
+    match db.check_is_verified(address).await {
+        Ok(result) => {
+            let status_message = if result.is_verified {
+                "On chain program verified"
+            } else {
+                "On chain program not verified"
+            };
+
+            info!(
+                "Program {} status: {} (verified: {})",
+                result.on_chain_hash, status_message, result.is_verified
+            );
+
+            (
+                StatusCode::OK,
+                Json(ExtendedStatusResponse {
+                    status: StatusResponse {
+                        is_verified: result.is_verified,
+                        message: status_message.to_string(),
+                        on_chain_hash: result.on_chain_hash,
+                        last_verified_at: result.last_verified_at,
+                        executable_hash: result.executable_hash,
+                        repo_url: result.repo_url,
+                        commit: result.commit,
+                    },
+                    is_frozen: result.is_frozen,
+                    is_closed: result.is_closed,
+                }),
+            )
         }
-        None => StatusResponse {
-            is_verified: false,
-            message: "On chain program not verified".into(),
-            on_chain_hash,
-            executable_hash: String::new(),
-            repo_url: String::new(),
-            commit: String::new(),
-            last_verified_at: None,
-        },
-    };
-    Ok(Json(ExtendedStatusResponse {
-        status,
-        is_frozen,
-        is_closed,
-    }))
+        Err(_) => (
+            StatusCode::OK,
+            Json(ExtendedStatusResponse {
+                status: StatusResponse {
+                    is_verified: false,
+                    message: "On chain program not verified".to_string(),
+                    on_chain_hash: String::new(),
+                    last_verified_at: None,
+                    executable_hash: String::new(),
+                    repo_url: String::new(),
+                    commit: String::new(),
+                },
+                is_frozen: false,
+                is_closed: false,
+            }),
+        ),
+    }
 }
 
-pub async fn status_all(
+/// Handler for retrieving all verification information for a program
+///
+/// # Endpoint: GET /status-all/:address
+///
+/// # Arguments
+/// * `db` - Database client from application state
+/// * `address` - Program address to get verification information
+///
+/// # Returns
+/// * `(StatusCode, Json<ApiResponse>)` - HTTP status and all verification information
+pub(crate) async fn get_verification_status_all(
     State(db): State<Db>,
-    Path(address): Path<String>,
-) -> Result<Json<Vec<VerificationResponseWithSigner>>> {
-    let program_id = validate_program_id(&address)?;
-    let state = db.get_program_state(&program_id.to_string()).await?;
-    let on_chain_hash = state
-        .as_ref()
-        .and_then(|s| s.on_chain_hash.clone())
-        .unwrap_or_default();
-    let is_frozen = state.as_ref().is_some_and(|s| s.is_frozen);
-    let is_closed = state.as_ref().is_some_and(|s| s.is_closed);
+    Path(VerificationStatusParams { address }): Path<VerificationStatusParams>,
+) -> (StatusCode, Json<ApiResponse>) {
+    if let Err(e) = validation::validate_pubkey(&address) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(
+                ErrorResponse {
+                    status: Status::Error,
+                    error: e,
+                }
+                .into(),
+            ),
+        );
+    }
 
-    let builds = db.completed_builds_by_signer(&program_id.to_string()).await?;
-    let out = builds
-        .into_iter()
-        .map(|b| build_with_signer(b, &on_chain_hash, is_frozen, is_closed))
-        .collect();
-    Ok(Json(out))
-}
+    info!(
+        "Fetching all verification information for program: {}",
+        address
+    );
 
-fn build_with_signer(
-    b: BuildRow,
-    on_chain_hash: &str,
-    is_frozen: bool,
-    is_closed: bool,
-) -> VerificationResponseWithSigner {
-    let is_verified = !on_chain_hash.is_empty()
-        && b.executable_hash.as_deref() == Some(on_chain_hash)
-        && !is_closed;
-    VerificationResponseWithSigner {
-        signer: b.signer.clone().unwrap_or_default(),
-        verification_response: VerificationResponse {
-            is_verified,
-            on_chain_hash: on_chain_hash.to_string(),
-            executable_hash: b.executable_hash.unwrap_or_default(),
-            repo_url: build_repo_url(&b.repository, b.commit_hash.as_deref()),
-            commit: b.commit_hash.unwrap_or_default(),
-            last_verified_at: b.completed_at.map(|t| t.naive_utc()),
-            is_frozen,
-            is_closed,
-        },
+    match db.get_all_verification_info(address).await {
+        Ok(result) => {
+            info!("Successfully retrieved all verification info");
+            (
+                StatusCode::OK,
+                Json(ApiResponse::Success(SuccessResponse::StatusAll(result))),
+            )
+        }
+        Err(err) => {
+            error!(
+                "Failed to get verification information from database: {}",
+                err
+            );
+            (
+                StatusCode::OK,
+                Json(
+                    ErrorResponse {
+                        status: Status::Error,
+                        error: "An unexpected database error occurred.".to_string(),
+                    }
+                    .into(),
+                ),
+            )
+        }
     }
 }

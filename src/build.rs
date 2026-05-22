@@ -5,10 +5,7 @@ use crate::{
     db::{Db, NewBuild},
     error::{ApiError, Result},
     logs,
-    onchain::{
-        extract_hash_with_prefix, get_otter_verify_params, get_program_state, OtterBuildParams,
-        ProgramOnchainState,
-    },
+    onchain::extract_hash_with_prefix,
     response::VerificationWebhookPayload,
 };
 use chrono::Utc;

@@ -81,6 +81,21 @@ pub struct ProgramStateRow {
     pub is_closed: bool,
 }
 
+/// Flattened "is the program verified" view, joining `program_state` and
+/// the best matching `builds` row. Mirrors what callers of the original
+/// `db.check_is_verified` expected.
+#[derive(Debug, Clone)]
+pub struct VerificationStatusResult {
+    pub is_verified: bool,
+    pub on_chain_hash: String,
+    pub executable_hash: String,
+    pub repo_url: String,
+    pub commit: String,
+    pub last_verified_at: Option<chrono::NaiveDateTime>,
+    pub is_frozen: bool,
+    pub is_closed: bool,
+}
+
 /// Identifying parameters for a build, before insertion.
 #[derive(Debug, Clone)]
 pub struct NewBuild {
@@ -245,6 +260,95 @@ impl Db {
         )
         .fetch_optional(&self.pool)
         .await?)
+    }
+
+    /// One row per signer who has a completed claim on this program.
+    /// Mirrors the original `db.get_all_verification_info`.
+    pub async fn get_all_verification_info(
+        &self,
+        program_id: String,
+    ) -> Result<Vec<crate::response::VerificationResponseWithSigner>> {
+        use crate::response::{VerificationResponse, VerificationResponseWithSigner};
+
+        let state = self.get_program_state(&program_id).await?;
+        let on_chain_hash = state
+            .as_ref()
+            .and_then(|s| s.on_chain_hash.clone())
+            .unwrap_or_default();
+        let is_frozen = state.as_ref().is_some_and(|s| s.is_frozen);
+        let is_closed = state.as_ref().is_some_and(|s| s.is_closed);
+
+        let builds = self.completed_builds_by_signer(&program_id).await?;
+        Ok(builds
+            .into_iter()
+            .map(|b| {
+                let is_verified = !on_chain_hash.is_empty()
+                    && b.executable_hash.as_deref() == Some(on_chain_hash.as_str())
+                    && !is_closed;
+                VerificationResponseWithSigner {
+                    signer: b.signer.unwrap_or_default(),
+                    verification_response: VerificationResponse {
+                        is_verified,
+                        on_chain_hash: on_chain_hash.clone(),
+                        executable_hash: b.executable_hash.unwrap_or_default(),
+                        repo_url: crate::onchain::build_repo_url(
+                            &b.repository,
+                            b.commit_hash.as_deref(),
+                        ),
+                        commit: b.commit_hash.unwrap_or_default(),
+                        last_verified_at: b.completed_at.map(|t| t.naive_utc()),
+                        is_frozen,
+                        is_closed,
+                    },
+                }
+            })
+            .collect())
+    }
+
+    /// One-call view of "is program X verified", joining `program_state`
+    /// (cached on-chain hash + frozen/closed flags) with the best matching
+    /// completed build.
+    pub async fn check_is_verified(
+        &self,
+        program_id: String,
+    ) -> Result<VerificationStatusResult> {
+        let state = self.get_program_state(&program_id).await?;
+        let on_chain_hash = state
+            .as_ref()
+            .and_then(|s| s.on_chain_hash.clone())
+            .unwrap_or_default();
+        let is_frozen = state.as_ref().is_some_and(|s| s.is_frozen);
+        let is_closed = state.as_ref().is_some_and(|s| s.is_closed);
+        let build = self
+            .best_build(&program_id, Some(on_chain_hash.as_str()))
+            .await?;
+        match build {
+            Some(b) => {
+                let is_verified = !on_chain_hash.is_empty()
+                    && b.executable_hash.as_deref() == Some(on_chain_hash.as_str())
+                    && !is_closed;
+                Ok(VerificationStatusResult {
+                    is_verified,
+                    on_chain_hash,
+                    executable_hash: b.executable_hash.unwrap_or_default(),
+                    repo_url: crate::onchain::build_repo_url(&b.repository, b.commit_hash.as_deref()),
+                    commit: b.commit_hash.unwrap_or_default(),
+                    last_verified_at: b.completed_at.map(|t| t.naive_utc()),
+                    is_frozen,
+                    is_closed,
+                })
+            }
+            None => Ok(VerificationStatusResult {
+                is_verified: false,
+                on_chain_hash,
+                executable_hash: String::new(),
+                repo_url: String::new(),
+                commit: String::new(),
+                last_verified_at: None,
+                is_frozen,
+                is_closed,
+            }),
+        }
     }
 
     /// Cached on-chain state for a program.

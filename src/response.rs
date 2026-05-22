@@ -91,12 +91,77 @@ pub struct VerifiedProgramStatusResponse {
     pub commit: String,
 }
 
-/// Serialized as `"success"`/`"error"`.
+/// General API response status
+/// Used to indicate success or failure of operations
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
+    /// Operation completed successfully
     Success,
+    /// Operation encountered an error
     Error,
+}
+
+/// Standard error response structure
+/// Used when an operation fails
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorResponse {
+    /// Status will always be Error for this type
+    pub status: Status,
+    /// Detailed error message explaining what went wrong
+    pub error: String,
+}
+
+/// Wrapper for successful responses
+/// Allows for different types of success responses
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SuccessResponse {
+    /// Response for program verification status
+    Status(StatusResponse),
+    /// Response for verification job status
+    Verify(VerifyResponse),
+    /// Response for listing all verified programs
+    StatusAll(Vec<VerificationResponseWithSigner>),
+}
+
+/// Main API response enum
+/// Encompasses all possible API response types
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ApiResponse {
+    Success(SuccessResponse),
+    Error(ErrorResponse),
+}
+
+impl From<StatusResponse> for ApiResponse {
+    fn from(value: StatusResponse) -> Self {
+        Self::Success(SuccessResponse::Status(value))
+    }
+}
+
+impl From<VerifyResponse> for ApiResponse {
+    fn from(value: VerifyResponse) -> Self {
+        Self::Success(SuccessResponse::Verify(value))
+    }
+}
+
+impl From<Vec<VerificationResponseWithSigner>> for ApiResponse {
+    fn from(value: Vec<VerificationResponseWithSigner>) -> Self {
+        Self::Success(SuccessResponse::StatusAll(value))
+    }
+}
+
+impl From<ErrorResponse> for ApiResponse {
+    fn from(value: ErrorResponse) -> Self {
+        Self::Error(value)
+    }
+}
+
+/// Path-extraction shape for status endpoints.
+#[derive(Debug, Deserialize)]
+pub struct VerificationStatusParams {
+    pub address: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

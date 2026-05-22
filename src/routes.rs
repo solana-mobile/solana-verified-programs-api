@@ -82,9 +82,18 @@ pub fn initialize_router(db: Db) -> Router {
     // Define routes with their rate limits
     Router::new()
         // Verification routes (stricter rate limits)
-        .route("/verify", post(async_verify::verify))
-        .route("/verify-with-signer", post(async_verify::verify_with_signer))
-        .route("/verify_sync", post(sync_verify::verify_sync))
+        .route(
+            "/verify",
+            post(async_verify::process_async_verification),
+        )
+        .route(
+            "/verify-with-signer",
+            post(async_verify::process_async_verification_with_signer),
+        )
+        .route(
+            "/verify_sync",
+            post(sync_verify::process_sync_verification),
+        )
         .layer(
             global_rate_limit(5)
                 .layer(rate_limit_per_ip(30, 1))
@@ -96,8 +105,14 @@ pub fn initialize_router(db: Db) -> Router {
                 .layer(rate_limit_per_ip(1, 100))
                 .layer(cors(Method::POST)),
         )
-        .route("/status-all/:address", get(verification_status::status_all))
-        .route("/status/:address", get(verification_status::status))
+        .route(
+            "/status-all/:address",
+            get(verification_status::get_verification_status_all),
+        )
+        .route(
+            "/status/:address",
+            get(verification_status::get_verification_status),
+        )
         .route("/resolve-hash/:hash", get(resolve_hash::resolve))
         .route("/job/:job_id", get(job_status::status))
         .route("/logs/:build_id", get(logs::fetch))
