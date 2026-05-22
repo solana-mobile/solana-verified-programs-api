@@ -227,8 +227,8 @@ impl Db {
 
     /// Most recent completed build for the program. When `prefer_hash` is
     /// set, prefers a build whose `executable_hash` matches; falls back to
-    /// the latest of any hash. Well-known signers (the legacy DEFAULT_SIGNER
-    /// + SIGNER_KEYS) win the tie-break so responses match the legacy API.
+    /// the latest of any hash. The fallback keeps `/status` responses
+    /// carrying repo/commit data after an upgrade.
     pub async fn best_build(
         &self,
         program_id: &ProgramId,
@@ -238,15 +238,7 @@ impl Db {
             BuildRow,
             "SELECT * FROM builds
              WHERE program_id = $1 AND status = 'completed'
-             ORDER BY (executable_hash IS NOT DISTINCT FROM $2) DESC,
-                      CASE signer
-                          WHEN '11111111111111111111111111111111' THEN 0
-                          WHEN '9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU' THEN 1
-                          WHEN 'CyJj5ejJAUveDXnLduJbkvwjxcmWJNqCuB9DR7AExrHn' THEN 1
-                          WHEN '5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r' THEN 1
-                          ELSE 2
-                      END ASC,
-                      completed_at DESC
+             ORDER BY (executable_hash IS NOT DISTINCT FROM $2) DESC, completed_at DESC
              LIMIT 1",
             program_id.as_str(),
             prefer_hash,

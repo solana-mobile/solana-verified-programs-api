@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM builds\n             WHERE program_id = $1 AND status = 'completed'\n             ORDER BY (executable_hash IS NOT DISTINCT FROM $2) DESC,\n                      CASE signer\n                          WHEN '11111111111111111111111111111111' THEN 0\n                          WHEN '9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU' THEN 1\n                          WHEN 'CyJj5ejJAUveDXnLduJbkvwjxcmWJNqCuB9DR7AExrHn' THEN 1\n                          WHEN '5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r' THEN 1\n                          ELSE 2\n                      END ASC,\n                      completed_at DESC\n             LIMIT 1",
+  "query": "SELECT * FROM builds\n             WHERE program_id = $1 AND status = 'completed'\n             ORDER BY (executable_hash IS NOT DISTINCT FROM $2) DESC, completed_at DESC\n             LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -109,5 +109,5 @@
       true
     ]
   },
-  "hash": "374704ab72ec350679e089aaa373aeac1eaded992e4f849b1ef8bb151e7d1bc9"
+  "hash": "63349c5c25276e9379c32bde47d407c4a6d388088d156cd83cd3aafa9e104b3b"
 }
