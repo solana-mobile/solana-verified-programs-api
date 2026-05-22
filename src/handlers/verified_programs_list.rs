@@ -1,85 +1,102 @@
-//! `GET /verified-programs` and `GET /verified-programs/:page`.
-
-use crate::{
-    db::{Db, PER_PAGE},
-    response::{PaginationMeta, VerifiedProgramListResponse},
-    validation,
-};
+use crate::db::{Db, PER_PAGE};
+use crate::response::{PaginationMeta, VerifiedProgramListResponse, VerifiedProgramsQuery};
+use crate::validation;
 use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use serde::Deserialize;
+use tracing::{error, info};
 
-#[derive(Debug, Deserialize)]
-pub struct ListQuery {
-    #[serde(default)]
-    pub search: Option<String>,
-}
-
-pub async fn list(
+/// Handler for retrieving a list of all verified programs
+///
+/// # Endpoint: GET /verified-programs
+///
+/// # Returns
+/// * `(StatusCode, Json<VerifiedProgramListResponse>)` - Status code and list of verified program addresses
+///
+/// On success, returns OK status with the list of program IDs
+/// On failure, still returns an empty list but logs the error
+pub(crate) async fn get_verified_programs_list(
     State(db): State<Db>,
-    Query(q): Query<ListQuery>,
+    Query(query): Query<VerifiedProgramsQuery>,
 ) -> (StatusCode, Json<VerifiedProgramListResponse>) {
-    paginated(State(db), Path(1), Query(q)).await
+    info!("Fetching list of verified programs");
+    get_verified_programs_list_paginated(State(db), Path(1), Query(query)).await
 }
 
-pub async fn paginated(
+/// Handler for retrieving a paginated list of verified programs
+///
+/// # Endpoint: GET /verified-programs/:page
+///
+/// # Returns
+/// * `(StatusCode, Json<VerifiedProgramListResponse>)` - Status code and list of verified program addresses
+pub(crate) async fn get_verified_programs_list_paginated(
     State(db): State<Db>,
     Path(page): Path<i64>,
-    Query(q): Query<ListQuery>,
+    Query(query): Query<VerifiedProgramsQuery>,
 ) -> (StatusCode, Json<VerifiedProgramListResponse>) {
     let page = page.max(1);
-    let search = q.search.as_deref().unwrap_or("").trim();
-    if let Err(msg) = validation::validate_search(search) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(VerifiedProgramListResponse {
-                meta: empty_meta(page),
-                verified_programs: vec![],
-                error: Some(msg),
-            }),
-        );
+
+    let search: Option<&str> = query.search.as_deref();
+
+    if let Some(s) = search {
+        if let Err(msg) = validation::validate_search(s) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(VerifiedProgramListResponse {
+                    meta: PaginationMeta {
+                        total: 0,
+                        page,
+                        total_pages: 0,
+                        items_per_page: PER_PAGE,
+                        has_next_page: false,
+                        has_prev_page: false,
+                    },
+                    verified_programs: vec![],
+                    error: Some(msg),
+                }),
+            );
+        }
     }
 
-    match db.verified_programs_page(page, search).await {
-        Ok((ids, total)) => {
-            let total_pages = (total + PER_PAGE - 1) / PER_PAGE;
-            (
+    let (verified_programs, total) = match db.get_verified_program_ids_page(page, search).await {
+        Ok(result) => result,
+        Err(err) => {
+            error!("Failed to fetch verified programs: {}", err);
+            return (
                 StatusCode::OK,
                 Json(VerifiedProgramListResponse {
                     meta: PaginationMeta {
-                        total,
+                        total: 0,
                         page,
-                        total_pages,
+                        total_pages: 0,
                         items_per_page: PER_PAGE,
-                        has_next_page: page < total_pages,
-                        has_prev_page: page > 1,
+                        has_next_page: false,
+                        has_prev_page: false,
                     },
-                    verified_programs: ids,
+                    verified_programs: vec![],
                     error: None,
                 }),
-            )
+            );
         }
-        Err(_) => (
-            StatusCode::OK,
-            Json(VerifiedProgramListResponse {
-                meta: empty_meta(page),
-                verified_programs: vec![],
-                error: None,
-            }),
-        ),
-    }
-}
+    };
 
-fn empty_meta(page: i64) -> PaginationMeta {
-    PaginationMeta {
-        total: 0,
-        page,
-        total_pages: 0,
-        items_per_page: PER_PAGE,
-        has_next_page: false,
-        has_prev_page: false,
-    }
+    let total_pages = (total + PER_PAGE - 1) / PER_PAGE;
+
+    (
+        StatusCode::OK,
+        Json(VerifiedProgramListResponse {
+            meta: PaginationMeta {
+                total,
+                page,
+                total_pages,
+                items_per_page: PER_PAGE,
+                has_next_page: page < total_pages,
+                has_prev_page: page > 1,
+            },
+            verified_programs,
+            error: None,
+        }),
+    )
 }

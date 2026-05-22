@@ -6,82 +6,178 @@
       {
         "ordinal": 0,
         "name": "id",
-        "type_info": "Uuid"
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "repository",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "repository"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "commit_hash",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "commit_hash"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "program_id",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "program_id"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "lib_name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "lib_name"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "base_docker_image",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "base_docker_image"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "mount_path",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "mount_path"
+          }
+        }
       },
       {
         "ordinal": 7,
         "name": "cargo_args",
-        "type_info": "TextArray"
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "cargo_args"
+          }
+        }
       },
       {
         "ordinal": 8,
         "name": "bpf_flag",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "bpf_flag"
+          }
+        }
       },
       {
         "ordinal": 9,
         "name": "arch",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "arch"
+          }
+        }
       },
       {
         "ordinal": 10,
         "name": "signer",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "signer"
+          }
+        }
       },
       {
         "ordinal": 11,
         "name": "status",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "status"
+          }
+        }
       },
       {
         "ordinal": 12,
         "name": "executable_hash",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "executable_hash"
+          }
+        }
       },
       {
         "ordinal": 13,
         "name": "error_message",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "error_message"
+          }
+        }
       },
       {
         "ordinal": 14,
         "name": "created_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "created_at"
+          }
+        }
       },
       {
         "ordinal": 15,
         "name": "completed_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "builds",
+            "name": "completed_at"
+          }
+        }
       }
     ],
     "parameters": {

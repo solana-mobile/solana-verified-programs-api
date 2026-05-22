@@ -25,6 +25,51 @@ pub fn spawn(db: Db) {
     });
 }
 
+/// Health view for the `/health/background-jobs` endpoint, derived from
+/// the timestamp on the oldest `program_state` row.
+pub struct BackgroundJobManager<'a> {
+    db: &'a Db,
+}
+
+impl<'a> BackgroundJobManager<'a> {
+    pub fn new(db: &'a Db) -> Self {
+        Self { db }
+    }
+
+    pub async fn get_health_status(&self) -> crate::response::BackgroundJobHealth {
+        let last = self.db.last_sweep_at().await.ok().flatten();
+        let now = chrono::Utc::now();
+        let interval = chrono::Duration::seconds(CONFIG.sweep_interval_seconds as i64);
+        match last {
+            Some(t) => {
+                let lag = now - t;
+                if lag > interval * 2 {
+                    crate::response::BackgroundJobHealth {
+                        status: "Inactive".into(),
+                        last_program_check: Some(t.naive_utc()),
+                        message: format!(
+                            "Last sweep was {}s ago, expected interval {}s",
+                            lag.num_seconds(),
+                            interval.num_seconds()
+                        ),
+                    }
+                } else {
+                    crate::response::BackgroundJobHealth {
+                        status: "Active".into(),
+                        last_program_check: Some(t.naive_utc()),
+                        message: "Background sweep running normally".into(),
+                    }
+                }
+            }
+            None => crate::response::BackgroundJobHealth {
+                status: "unknown".into(),
+                last_program_check: None,
+                message: "no program_state rows yet".into(),
+            },
+        }
+    }
+}
+
 async fn run_once(db: &Db) -> crate::error::Result<()> {
     let ids = db.sweep_program_ids().await?;
     if ids.is_empty() {

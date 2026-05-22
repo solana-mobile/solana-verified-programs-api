@@ -1,28 +1,54 @@
-//! `GET /logs/:build_id` — stdout/stderr from a build.
-
-use crate::{
-    db::Db,
-    error::{ApiError, Result},
-    logs,
-};
+use crate::{db::Db, logs::read_logs};
 use axum::{
-    extract::{Path, State},
     Json,
+    extract::{Path, State},
+    http::StatusCode,
 };
-use serde_json::{json, Value};
-use std::str::FromStr;
+use serde_json::{Value, json};
+use tracing::{error, info};
 use uuid::Uuid;
 
-pub async fn fetch(
+/// Handler for retrieving build logs for a specific program
+///
+/// # Endpoint: GET /logs/:build_id
+///
+/// # Arguments
+/// * `db` - Database client from application state
+/// * `build_id` - Build id to fetch logs
+///
+/// # Returns
+/// * `(StatusCode, Json<Value>)` - HTTP status and JSON response containing either the logs or an error message
+pub(crate) async fn get_build_logs(
     State(db): State<Db>,
     Path(build_id): Path<String>,
-) -> Result<Json<Value>> {
-    let id = Uuid::from_str(&build_id)
-        .map_err(|_| ApiError::BadRequest("Invalid build id (expected UUID)".into()))?;
-    let Some(file) = db.get_build_log_file(id).await? else {
-        return Ok(Json(
-            json!({ "error": "We could not find the logs for this build" }),
-        ));
+) -> (StatusCode, Json<Value>) {
+    if Uuid::parse_str(&build_id).is_err() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Invalid build id (expected UUID)" })),
+        );
+    }
+
+    info!("Fetching build logs for build_id: {}", build_id);
+
+    let file_id = match db.get_logs_info(&build_id).await {
+        Ok(res) => {
+            info!("Found log file: {}", res.file_name);
+            res.file_name
+        }
+        Err(err) => {
+            error!("Failed to retrieve logs from database: {}", err);
+            return (
+                StatusCode::OK,
+                Json(json!({
+                    "error": "We could not find the logs for this build"
+                })),
+            );
+        }
     };
-    Ok(Json(logs::read_logs(&file).await))
+
+    let logs = read_logs(&file_id).await;
+    info!("Successfully retrieved logs for build_id: {}", build_id);
+
+    (StatusCode::OK, Json(logs))
 }

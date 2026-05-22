@@ -391,6 +391,28 @@ impl Db {
         Ok(())
     }
 
+    /// Alias for [`Self::mark_closed`], used by the unverify path when the
+    /// program's upgrade buffer has been deleted.
+    pub async fn handle_closed_program(&self, program_id: &str) -> Result<()> {
+        self.mark_closed(program_id).await
+    }
+
+    /// Updates the cached on-chain hash for a program after an upgrade.
+    /// The build → verified mapping is implicit (best_build joins live).
+    pub async fn unverify_program(&self, program_id: &str, on_chain_hash: &str) -> Result<()> {
+        sqlx::query!(
+            "INSERT INTO program_state (program_id, on_chain_hash, last_checked)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (program_id) DO UPDATE
+             SET on_chain_hash = EXCLUDED.on_chain_hash, last_checked = NOW()",
+            program_id,
+            on_chain_hash,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     /// Records a program as closed and clears its authority.
     pub async fn mark_closed(&self, program_id: &str) -> Result<()> {
         sqlx::query!(
@@ -408,13 +430,14 @@ impl Db {
     /// One page of currently-verified program IDs plus the total count.
     /// `search` (empty disables filtering) is matched against both
     /// `program_id` and `repository`.
-    pub async fn verified_programs_page(
+    pub async fn get_verified_program_ids_page(
         &self,
         page: i64,
-        search: &str,
+        search: Option<&str>,
     ) -> Result<(Vec<String>, i64)> {
         let page = page.max(1);
         let offset = (page - 1) * PER_PAGE;
+        let search = search.unwrap_or("");
         let pattern = format!("%{search}%");
 
         let total = sqlx::query_scalar!(
@@ -460,8 +483,11 @@ impl Db {
     /// (build hash matches on-chain hash) and not closed/frozen. The join
     /// guarantees `executable_hash == program_state.on_chain_hash`, so the
     /// state row carries no info the build doesn't already.
-    pub async fn currently_verified_builds(&self) -> Result<Vec<BuildRow>> {
-        Ok(sqlx::query_as!(
+    /// All currently-verified programs, one row per program.
+    pub async fn get_verification_status_all(
+        &self,
+    ) -> Result<Vec<crate::response::VerifiedProgramStatusResponse>> {
+        let builds: Vec<BuildRow> = sqlx::query_as!(
             BuildRow,
             "SELECT DISTINCT ON (b.program_id) b.*
              FROM builds b
@@ -474,7 +500,27 @@ impl Db {
              ORDER BY b.program_id, b.completed_at DESC",
         )
         .fetch_all(&self.pool)
-        .await?)
+        .await?;
+
+        Ok(builds
+            .into_iter()
+            .map(|b| {
+                let hash = b.executable_hash.unwrap_or_default();
+                crate::response::VerifiedProgramStatusResponse {
+                    program_id: b.program_id,
+                    is_verified: true,
+                    message: "On chain program verified".to_string(),
+                    on_chain_hash: hash.clone(),
+                    executable_hash: hash,
+                    last_verified_at: b.completed_at.map(|t| t.naive_utc()),
+                    repo_url: crate::onchain::build_repo_url(
+                        &b.repository,
+                        b.commit_hash.as_deref(),
+                    ),
+                    commit: b.commit_hash.unwrap_or_default(),
+                }
+            })
+            .collect())
     }
 
     /// Every program ID the sweep should refresh: existing `program_state`
@@ -539,4 +585,61 @@ impl Db {
         .fetch_optional(&self.pool)
         .await?)
     }
+
+    /// Original-shape wrapper around `get_build_log_file` returning a
+    /// `BuildLog`-ish struct with the file name.
+    pub async fn get_logs_info(&self, build_id: &str) -> Result<BuildLogInfo> {
+        let id = uuid::Uuid::parse_str(build_id)
+            .map_err(|e| ApiError::BadRequest(format!("Invalid build id: {e}")))?;
+        self.get_build_log_file(id)
+            .await?
+            .map(|file_name| BuildLogInfo { file_name })
+            .ok_or_else(|| ApiError::NotFound(format!("No logs for build {build_id}")))
+    }
+
+    /// `/job/:id` reads this. Wraps `get_build` with a string id and
+    /// returns an error when the build is missing.
+    pub async fn get_job(&self, job_id: &str) -> Result<BuildRow> {
+        let id = uuid::Uuid::parse_str(job_id)
+            .map_err(|e| ApiError::BadRequest(format!("Invalid job id: {e}")))?;
+        self.get_build(id)
+            .await?
+            .ok_or_else(|| ApiError::NotFound(format!("Job {job_id} not found")))
+    }
+
+    /// Best completed build for the program joined with its cached on-chain
+    /// hash. `_signer` is accepted for compatibility with the original
+    /// signature but ignored.
+    pub async fn get_verified_build(
+        &self,
+        program_id: &str,
+        _signer: Option<&str>,
+    ) -> Result<VerifiedBuild> {
+        let state = self.get_program_state(program_id).await?;
+        let on_chain_hash = state
+            .as_ref()
+            .and_then(|s| s.on_chain_hash.clone())
+            .unwrap_or_default();
+        let build = self
+            .best_build(program_id, Some(on_chain_hash.as_str()))
+            .await?
+            .ok_or_else(|| ApiError::NotFound(format!("No completed build for {program_id}")))?;
+        Ok(VerifiedBuild {
+            on_chain_hash,
+            executable_hash: build.executable_hash.unwrap_or_default(),
+        })
+    }
+}
+
+/// What [`Db::get_logs_info`] returns.
+#[derive(Debug, Clone)]
+pub struct BuildLogInfo {
+    pub file_name: String,
+}
+
+/// What [`Db::get_verified_build`] returns.
+#[derive(Debug, Clone)]
+pub struct VerifiedBuild {
+    pub on_chain_hash: String,
+    pub executable_hash: String,
 }

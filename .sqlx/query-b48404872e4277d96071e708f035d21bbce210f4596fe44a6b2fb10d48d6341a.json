@@ -6,17 +6,35 @@
       {
         "ordinal": 0,
         "name": "on_chain_hash",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "program_state",
+            "name": "on_chain_hash"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "is_frozen",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "program_state",
+            "name": "is_frozen"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "is_closed",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "program_state",
+            "name": "is_closed"
+          }
+        }
       }
     ],
     "parameters": {

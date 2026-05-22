@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO program_state (program_id, on_chain_hash, last_checked)\n             VALUES ($1, $2, NOW())\n             ON CONFLICT (program_id) DO UPDATE\n             SET on_chain_hash = EXCLUDED.on_chain_hash, last_checked = NOW()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "82f3e5f1c2a43b6ea7b23411950d49f38f173a0a60284a382ea060dac2b3e30a"
+}

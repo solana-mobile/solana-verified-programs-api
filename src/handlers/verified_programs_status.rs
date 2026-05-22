@@ -1,51 +1,43 @@
-//! `GET /verified-programs-status` — verification status for every verified program.
+use crate::db::Db;
+use crate::response::{Status, VerifiedProgramsStatusListResponse};
+use axum::{Json, extract::State, http::StatusCode};
+use tracing::{error, info};
 
-use crate::{
-    db::{BuildRow, Db},
-    handlers::status_message,
-    onchain::build_repo_url,
-    response::{Status, VerifiedProgramStatusResponse, VerifiedProgramsStatusListResponse},
-};
-use axum::{extract::State, http::StatusCode, Json};
-
-pub async fn all(
+/// Handler for retrieving status of all verified programs
+///
+/// # Endpoint: GET /verified-programs/status
+///
+/// # Returns
+/// * `(StatusCode, Json<VerifiedProgramsStatusListResponse>)` - Status and list of program statuses
+pub(crate) async fn get_verified_programs_status(
     State(db): State<Db>,
 ) -> (StatusCode, Json<VerifiedProgramsStatusListResponse>) {
-    match db.currently_verified_builds().await {
-        Ok(builds) => {
-            // Every row here passed the join filter, so is_verified is always
-            // true and on_chain_hash == executable_hash.
-            let data = builds.into_iter().map(status_row).collect();
+    info!("Fetching status for all verified programs");
+
+    let all_verified_programs = db.get_verification_status_all().await;
+
+    match all_verified_programs {
+        Ok(all_verified_programs) => {
+            info!("Successfully retrieved status for all programs");
             (
                 StatusCode::OK,
                 Json(VerifiedProgramsStatusListResponse {
                     status: Status::Success,
-                    data: Some(data),
+                    data: Some(all_verified_programs),
                     error: None,
                 }),
             )
         }
-        Err(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(VerifiedProgramsStatusListResponse {
-                status: Status::Error,
-                data: None,
-                error: Some("An unexpected database error occurred.".into()),
-            }),
-        ),
-    }
-}
-
-fn status_row(b: BuildRow) -> VerifiedProgramStatusResponse {
-    let hash = b.executable_hash.unwrap_or_default();
-    VerifiedProgramStatusResponse {
-        program_id: b.program_id,
-        is_verified: true,
-        message: status_message(true),
-        on_chain_hash: hash.clone(),
-        executable_hash: hash,
-        last_verified_at: b.completed_at.map(|t| t.naive_utc()),
-        repo_url: build_repo_url(&b.repository, b.commit_hash.as_deref()),
-        commit: b.commit_hash.unwrap_or_default(),
+        Err(err) => {
+            error!("Failed to fetch verified programs from database: {}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(VerifiedProgramsStatusListResponse {
+                    status: Status::Error,
+                    data: None,
+                    error: Some("An unexpected database error occurred.".to_string()),
+                }),
+            )
+        }
     }
 }

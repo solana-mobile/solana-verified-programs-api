@@ -1,58 +1,122 @@
-//! `GET /job/:job_id` — async build status.
+use crate::db::Db;
+use crate::response::{JobStatus, JobVerificationResponse};
+use axum::Json;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use tracing::{error, info};
 
-use crate::{
-    db::Db,
-    error::{ApiError, Result},
-    onchain::build_repo_url,
-    response::JobVerificationResponse,
-};
-use axum::{
-    extract::{Path, State},
-    Json,
-};
-use std::str::FromStr;
-use uuid::Uuid;
-
-pub async fn status(
+/// Handler for retrieving the status of a verification job
+///
+/// # Endpoint: GET /job/:job_id
+///
+/// # Arguments
+/// * `db` - Database client from application state
+/// * `job_id` - Unique identifier for the verification job
+///
+/// # Returns
+/// * `(StatusCode, Json<JobVerificationResponse>)` - HTTP status and job details
+pub(crate) async fn get_job_status(
     State(db): State<Db>,
     Path(job_id): Path<String>,
-) -> Result<Json<JobVerificationResponse>> {
-    let id = Uuid::from_str(&job_id)
-        .map_err(|_| ApiError::BadRequest("invalid job id (expected UUID)".into()))?;
-    let build = db
-        .get_build(id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("job {job_id} not found")))?;
-    let resp = match build.status.as_str() {
-        "completed" => JobVerificationResponse {
-            status: "completed".into(),
-            message: "Job completed".into(),
-            on_chain_hash: db
-                .get_program_state(&build.program_id)
-                .await
-                .ok()
-                .flatten()
-                .and_then(|s| s.on_chain_hash)
-                .unwrap_or_default(),
-            executable_hash: build.executable_hash.unwrap_or_default(),
-            repo_url: build_repo_url(&build.repository, build.commit_hash.as_deref()),
-        },
-        "failed" => JobVerificationResponse {
-            status: "failed".into(),
-            message: build
-                .error_message
-                .unwrap_or_else(|| "Verification failed".into()),
-            on_chain_hash: String::new(),
-            executable_hash: String::new(),
-            repo_url: String::new(),
-        },
-        _ => JobVerificationResponse {
-            status: "in_progress".into(),
-            message: "Please wait, the verification is in progress".into(),
-            on_chain_hash: String::new(),
-            executable_hash: String::new(),
-            repo_url: String::new(),
-        },
-    };
-    Ok(Json(resp))
+) -> (StatusCode, Json<JobVerificationResponse>) {
+    info!("Checking status for job: {}", job_id);
+
+    match db.get_job(&job_id).await {
+        Ok(job) => {
+            let status: JobStatus = job.status.into();
+            match status {
+                JobStatus::Completed => {
+                    info!("Job {} completed, fetching verification details", job_id);
+                    match db.get_verified_build(&job.program_id, None).await {
+                        Ok(verified_build) => {
+                            let repo_url = job.commit_hash.map_or(job.repository.clone(), |hash| {
+                                format!("{}/tree/{}", job.repository.trim_end_matches('/'), hash)
+                            });
+
+                            info!(
+                                "Successfully retrieved verification details for job {}",
+                                job_id
+                            );
+                            (
+                                StatusCode::OK,
+                                Json(JobVerificationResponse {
+                                    status: JobStatus::Completed.into(),
+                                    message: "Job completed".to_string(),
+                                    on_chain_hash: verified_build.on_chain_hash,
+                                    executable_hash: verified_build.executable_hash,
+                                    repo_url,
+                                }),
+                            )
+                        }
+                        Err(err) => {
+                            error!("Failed to get verification data from database: {}", err);
+                            (
+                                StatusCode::OK,
+                                create_error_response(
+                                    "Unexpected error while getting Data from DB",
+                                ),
+                            )
+                        }
+                    }
+                }
+                JobStatus::Failed => {
+                    info!("Job {} failed", job_id);
+                    (
+                        StatusCode::OK,
+                        Json(JobVerificationResponse {
+                            status: JobStatus::Failed.into(),
+                            message: "Verification failed".to_string(),
+                            on_chain_hash: String::new(),
+                            executable_hash: String::new(),
+                            repo_url: String::new(),
+                        }),
+                    )
+                }
+                JobStatus::InProgress => {
+                    info!("Job {} is still in progress", job_id);
+                    (
+                        StatusCode::OK,
+                        Json(JobVerificationResponse {
+                            status: JobStatus::InProgress.into(),
+                            message: "Please wait, the verification is in progress".to_string(),
+                            on_chain_hash: String::new(),
+                            executable_hash: String::new(),
+                            repo_url: String::new(),
+                        }),
+                    )
+                }
+                JobStatus::Unused => {
+                    info!("Job {} marked as unused", job_id);
+                    (
+                        StatusCode::OK,
+                        Json(JobVerificationResponse {
+                            status: JobStatus::Failed.into(),
+                            message: "These params were not used. There might be a PDA associated with this program ID.".to_string(),
+                            on_chain_hash: String::new(),
+                            executable_hash: String::new(),
+                            repo_url: String::new(),
+                        }),
+                    )
+                }
+            }
+        }
+        Err(err) => {
+            error!("Failed to get job status from database: {}", err);
+            (
+                StatusCode::OK,
+                create_error_response("Unexpected error while getting Data from DB"),
+            )
+        }
+    }
+}
+
+/// Creates a standard error response
+fn create_error_response(message: &str) -> Json<JobVerificationResponse> {
+    Json(JobVerificationResponse {
+        status: "unknown".to_string(),
+        message: message.to_string(),
+        on_chain_hash: String::new(),
+        executable_hash: String::new(),
+        repo_url: String::new(),
+    })
 }

@@ -99,7 +99,7 @@ pub fn initialize_router(db: Db) -> Router {
                 .layer(rate_limit_per_ip(30, 1))
                 .layer(cors(Method::POST)),
         )
-        .route("/unverify", post(unverify::unverify))
+        .route("/unverify", post(unverify::handle_unverify))
         .layer(
             global_rate_limit(100)
                 .layer(rate_limit_per_ip(1, 100))
@@ -114,17 +114,20 @@ pub fn initialize_router(db: Db) -> Router {
             get(verification_status::get_verification_status),
         )
         .route("/resolve-hash/:hash", get(resolve_hash::resolve))
-        .route("/job/:job_id", get(job_status::status))
-        .route("/logs/:build_id", get(logs::fetch))
-        .route("/pda", post(pda_worker::pda))
-        .route("/verified-programs", get(verified_programs_list::list))
+        .route("/job/:job_id", get(job_status::get_job_status))
+        .route("/logs/:build_id", get(logs::get_build_logs))
+        .route("/pda", post(pda_worker::handle_pda_updates_creations))
+        .route(
+            "/verified-programs",
+            get(verified_programs_list::get_verified_programs_list),
+        )
         .route(
             "/verified-programs/:page",
-            get(verified_programs_list::paginated),
+            get(verified_programs_list::get_verified_programs_list_paginated),
         )
         .route(
             "/verified-programs-status",
-            get(verified_programs_status::all),
+            get(verified_programs_status::get_verified_programs_status),
         )
         .layer(
             global_rate_limit(10000)
@@ -134,8 +137,11 @@ pub fn initialize_router(db: Db) -> Router {
         // Base route
         .route("/", get(index::landing))
         .route("/api", get(index::endpoints))
-        .route("/health", get(health::health))
-        .route("/health/background-jobs", get(health::background_jobs))
+        .route("/health", get(health::health_check))
+        .route(
+            "/health/background-jobs",
+            get(health::background_job_status),
+        )
         // Apply common middleware. Compression is at the outermost layer so
         // it doesn't need to re-derive body types through the rate-limit
         // stack (which broke under axum 0.7's stricter body bounds).

@@ -51,6 +51,38 @@ pub struct VerifyResponse {
     pub message: String,
 }
 
+/// Lifecycle state of a verification job. `Unused` is legacy; new jobs are
+/// only ever `InProgress` / `Completed` / `Failed`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobStatus {
+    InProgress,
+    Completed,
+    Failed,
+    Unused,
+}
+
+impl From<String> for JobStatus {
+    fn from(s: String) -> Self {
+        match s.as_str() {
+            "completed" => JobStatus::Completed,
+            "failed" => JobStatus::Failed,
+            "un-used" => JobStatus::Unused,
+            _ => JobStatus::InProgress,
+        }
+    }
+}
+
+impl From<JobStatus> for String {
+    fn from(j: JobStatus) -> Self {
+        match j {
+            JobStatus::Completed => "completed".to_string(),
+            JobStatus::Failed => "failed".to_string(),
+            JobStatus::InProgress => "in_progress".to_string(),
+            JobStatus::Unused => "un-used".to_string(),
+        }
+    }
+}
+
 /// Hash/url fields are empty strings (not null) for in-progress or failed
 /// jobs — preserved from the legacy shape.
 #[derive(Debug, Serialize, Deserialize)]
@@ -162,6 +194,13 @@ impl From<ErrorResponse> for ApiResponse {
 #[derive(Debug, Deserialize)]
 pub struct VerificationStatusParams {
     pub address: String,
+}
+
+/// Query-string shape for /verified-programs.
+#[derive(Debug, Deserialize)]
+pub struct VerifiedProgramsQuery {
+    #[serde(default)]
+    pub search: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

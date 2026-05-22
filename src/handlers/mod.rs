@@ -12,18 +12,10 @@ pub mod verified_programs_list;
 pub mod verified_programs_status;
 pub mod verify_helpers;
 
-use crate::{
-    CONFIG,
-    db::Db,
-    error::{ApiError, Result},
-    onchain::snapshot_programs,
-};
+use crate::CONFIG;
 use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
 use serde_json::Value;
-use solana_pubkey::Pubkey;
-use std::str::FromStr;
-use tracing::info;
 
 /// Constant-equality check against [`crate::config::Config::auth_secret`].
 pub fn is_authorized(headers: &HeaderMap) -> bool {
@@ -31,15 +23,6 @@ pub fn is_authorized(headers: &HeaderMap) -> bool {
         .get("AUTHORIZATION")
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| v == CONFIG.auth_secret)
-}
-
-/// Human-readable verification summary used by several status responses.
-pub fn status_message(is_verified: bool) -> String {
-    if is_verified {
-        "On chain program verified".into()
-    } else {
-        "On chain program not verified".into()
-    }
 }
 
 /// Subset of Helius's parsed-transaction payload we actually look at. Extra
@@ -57,7 +40,7 @@ pub struct Instruction {
     pub program_id: String,
 }
 
-pub(crate) fn parse_helius(
+pub(crate) fn parse_helius_transaction(
     payload: &[Value],
 ) -> std::result::Result<HeliusParsedTransaction, (StatusCode, &'static str)> {
     if payload.is_empty() {
@@ -67,14 +50,3 @@ pub(crate) fn parse_helius(
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid payload"))
 }
 
-/// Snapshot a single program on-chain and write the result to `program_state`.
-/// Shared between the unverify and pda webhooks.
-pub(crate) async fn refresh_state(db: &Db, program_id: &str) -> Result<()> {
-    let pid = Pubkey::from_str(program_id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    let mut snaps = snapshot_programs(&[pid]).await?;
-    if let Some(snap) = snaps.remove(&pid) {
-        db.upsert_program_state(program_id, &snap).await?;
-        info!("refreshed state for {}", program_id);
-    }
-    Ok(())
-}

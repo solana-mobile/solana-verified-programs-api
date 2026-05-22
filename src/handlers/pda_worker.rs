@@ -1,99 +1,108 @@
-//! `POST /pda` — Helius webhook for Otter Verify PDA creates/updates.
+use std::str::FromStr;
 
 use crate::{
-    build,
     db::{Db, NewBuild},
-    error::{ApiError, Result},
-    handlers::{is_authorized, parse_helius, refresh_state},
-    onchain::{OtterBuildParams, OTTER_VERIFY_PROGRAM_ID},
+    handlers::{async_verify::process_verification, is_authorized, parse_helius_transaction},
+    onchain::{OTTER_VERIFY_PROGRAM_ID, OtterBuildParams, get_on_chain_hash},
     rpc::get_rpc_manager,
 };
 use axum::{
+    Json,
     extract::State,
     http::{HeaderMap, StatusCode},
-    Json,
 };
 use borsh::BorshDeserialize;
 use serde_json::Value;
 use solana_pubkey::Pubkey;
-use std::str::FromStr;
 use tracing::{error, info, warn};
 
-pub async fn pda(
+pub(crate) async fn handle_pda_updates_creations(
     State(db): State<Db>,
     headers: HeaderMap,
     Json(payload): Json<Vec<Value>>,
 ) -> (StatusCode, &'static str) {
+    info!("Received PDA updates/creation event");
+
+    // Validate authorization
     if !is_authorized(&headers) {
-        warn!("unauthorized /pda call");
+        warn!("Unauthorized unverify attempt");
         return (
             StatusCode::UNAUTHORIZED,
             "Missing or invalid authorization header",
         );
     }
-    let tx = match parse_helius(&payload) {
-        Ok(t) => t,
-        Err(e) => return e,
+
+    // Validate payload
+    let helius_parsed_transaction = match parse_helius_transaction(&payload) {
+        Ok(parsed_transaction) => parsed_transaction,
+        Err(status) => return status,
     };
-    let otter_id = OTTER_VERIFY_PROGRAM_ID.to_string();
-    tokio::spawn(async move {
-        for ix in tx.instructions {
-            if ix.program_id != otter_id || ix.accounts.len() < 3 {
-                continue;
-            }
-            let pda_account = ix.accounts[0].clone();
-            let program_id = ix.accounts[2].clone();
-            if let Err(e) = process_pda(&db, &program_id, &pda_account).await {
-                error!("pda {} program {}: {}", pda_account, program_id, e);
-            }
+
+    let otter_program_id = OTTER_VERIFY_PROGRAM_ID.to_string();
+    // Process instructions
+    for ix in helius_parsed_transaction.instructions {
+        // Only process PDA updates/creations
+        if ix.program_id != otter_program_id {
+            continue;
         }
-    });
+        let pda_account = &ix.accounts[0];
+        let program_id = &ix.accounts[2];
+
+        let _ = process_otter_verify_instruction(&db, program_id, pda_account).await;
+    }
+
     (StatusCode::OK, "PDA updates/creations request received")
 }
 
-async fn process_pda(db: &Db, program_id: &str, pda_account: &str) -> Result<()> {
-    refresh_state(db, program_id).await.ok();
-
-    let pda_pubkey =
-        Pubkey::from_str(pda_account).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    let data = get_rpc_manager()
-        .execute_with_retry(|client| {
-            let pda = pda_pubkey;
-            async move {
-                client
-                    .get_account_data(&pda)
-                    .await
-                    .map_err(|e| ApiError::Rpc(format!("get_account_data: {e}")))
-            }
-        })
-        .await?;
-    let otter = OtterBuildParams::try_from_slice(&data[8..])
-        .map_err(|e| ApiError::Internal(format!("deserialize PDA: {e}")))?;
-
-    let new_build = NewBuild {
-        repository: otter.git_url.clone(),
-        commit_hash: Some(otter.commit.clone()),
-        program_id: otter.address.to_string(),
-        lib_name: otter.library_name(),
-        base_docker_image: otter.base_image(),
-        mount_path: otter.mount_path(),
-        cargo_args: otter.cargo_args(),
-        bpf_flag: otter.bpf(),
-        arch: otter.arch(),
-        signer: Some(otter.signer.to_string()),
+async fn process_otter_verify_instruction(
+    db: &Db,
+    program_id: &str,
+    pda_account: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executable_hash = match db.get_verified_build(program_id, None).await {
+        Ok(data) => data.on_chain_hash,
+        Err(_) => String::default(),
     };
 
-    if let Some(dup) = db.find_duplicate(&new_build).await? {
-        if dup.status == "in_progress" || dup.status == "completed" {
-            info!("dup build for {} from PDA — skipping kick", program_id);
-            return Ok(());
+    let onchain_hash = match get_on_chain_hash(program_id).await {
+        Ok(hash) => hash,
+        Err(e) => {
+            let error_str = e.to_string();
+            if error_str.contains("Program appears to be closed") {
+                // Handle closed program using centralized helper
+                db.handle_closed_program(program_id).await?;
+                return Ok(()); // Exit early for closed programs
+            }
+            return Err(e.into());
         }
-    }
+    };
 
-    let id = db.insert_build(&new_build).await?;
-    let db2 = db.clone();
-    tokio::spawn(async move {
-        build::execute(id, new_build, db2, None).await;
-    });
+    if onchain_hash != executable_hash {
+        db.unverify_program(program_id, &onchain_hash).await?;
+        // start new build
+        let pda_account_pubkey = Pubkey::from_str(pda_account)?;
+        let rpc_manager = get_rpc_manager();
+        let params = rpc_manager
+            .execute_with_retry(|client| async move {
+                client
+                    .get_account_data(&pda_account_pubkey)
+                    .await
+                    .map_err(|e| crate::error::ApiError::Rpc(format!("RPC error: {e}")))
+            })
+            .await?;
+        let otter_build_params = match OtterBuildParams::try_from_slice(&params[8..]) {
+            Ok(params) => params,
+            Err(e) => {
+                error!("Failed to deserialize PDA data: {}", e);
+                return Err(e.into());
+            }
+        };
+        let signer = otter_build_params.signer.to_string();
+        let new_build = NewBuild::from(&otter_build_params);
+        let _ = process_verification(db.clone(), new_build, signer, None).await;
+        info!("Successfully unverified program {}", program_id);
+    } else {
+        info!("Program {} has not been upgraded", program_id);
+    }
     Ok(())
 }

@@ -269,6 +269,14 @@ fn compute_program_hash(data: &[u8]) -> String {
 }
 
 /// Single-program snapshot, with Squads/burned-authority recovery via tx
+/// Convenience wrapper around `get_program_state` that returns just the
+/// on-chain executable hash as a hex string.
+pub async fn get_on_chain_hash(program_id: &str) -> Result<String> {
+    let pid = Pubkey::from_str(program_id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let state = get_program_state(&pid).await?;
+    Ok(state.executable_hash.unwrap_or_default())
+}
+
 /// history when the program looks frozen but has no on-chain authority.
 /// Used by the verify path where the authority drives Otter Verify PDA lookup.
 pub async fn get_program_state(program_id: &Pubkey) -> Result<ProgramOnchainState> {
