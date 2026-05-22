@@ -6453,7 +6453,6 @@ dependencies = [
  "chrono",
  "dotenv",
  "envy",
- "futures",
  "hex",
  "once_cell",
  "reqwest",
