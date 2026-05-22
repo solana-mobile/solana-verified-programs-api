@@ -17,10 +17,16 @@ pub struct Config {
     /// benchmarking, never in production.
     #[serde(default)]
     pub disable_rate_limit: bool,
+    #[serde(default = "default_db_max_connections")]
+    pub db_max_connections: u32,
 }
 
 fn default_sweep_interval() -> u64 {
     300
+}
+
+fn default_db_max_connections() -> u32 {
+    50
 }
 
 pub static CONFIG: once_cell::sync::Lazy<Config> = once_cell::sync::Lazy::new(|| {

@@ -21,7 +21,6 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::str::FromStr;
-use tracing::info;
 use uuid::Uuid;
 
 /// `search` is parsed into a [`SearchQuery`] inside the handler so the
@@ -37,7 +36,6 @@ pub async fn status(
     State(db): State<Db>,
     Path(program_id): Path<ProgramId>,
 ) -> Json<ExtendedStatusResponse> {
-    info!("/status {}", program_id);
     let row = db.status_row(&program_id).await.ok().flatten();
     let Some((state, build)) = row else {
         return Json(ExtendedStatusResponse {
@@ -96,7 +94,6 @@ pub async fn status_all(
     State(db): State<Db>,
     Path(program_id): Path<ProgramId>,
 ) -> Result<Json<Vec<VerificationResponseWithSigner>>> {
-    info!("/status-all {}", program_id);
     let state = db.get_program_state(&program_id.as_str()).await?;
     let on_chain_hash = state
         .as_ref()
@@ -142,7 +139,6 @@ pub async fn resolve_hash(
     State(db): State<Db>,
     Path(hash): Path<String>,
 ) -> Result<Json<ResolveHashResponse>> {
-    info!("/resolve-hash {}", hash);
     let hash = hash.trim().to_string();
     if hash.is_empty() {
         return Err(ApiError::BadRequest("hash cannot be empty".into()));

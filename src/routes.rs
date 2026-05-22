@@ -43,12 +43,14 @@ macro_rules! maybe_rl {
 pub fn build(db: Db) -> Router {
     let cors = |m: Method| CorsLayer::new().allow_methods(m).allow_origin(Any);
 
+    // Per-request tracing emits at debug — set `RUST_LOG=verified_programs_api=debug`
+    // to see every request. 4xx/5xx still bubble up via axum's error handling.
     let trace = TraceLayer::new_for_http()
         .make_span_with(|r: &Request<_>| {
-            tracing::info_span!("http", method = %r.method(), path = r.uri().path())
+            tracing::debug_span!("http", method = %r.method(), path = r.uri().path())
         })
         .on_response(|res: &Response, latency: std::time::Duration, _: &Span| {
-            tracing::info!(latency = ?latency, status = res.status().as_u16(), "done");
+            tracing::debug!(latency = ?latency, status = res.status().as_u16(), "done");
         });
 
     let verify_group: Router<Db> = maybe_rl!(

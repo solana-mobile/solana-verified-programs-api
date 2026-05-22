@@ -2,7 +2,9 @@
 //! verification attempt — job + result merged) and `program_state` (one
 //! cached row per program). Reads never call out to the chain.
 
-use crate::{error::ApiError, error::Result, onchain::ProgramOnchainState, types::ProgramId};
+use crate::{
+    config::CONFIG, error::ApiError, error::Result, onchain::ProgramOnchainState, types::ProgramId,
+};
 use chrono::{DateTime, Utc};
 use sqlx::{
     postgres::{PgPoolOptions, PgRow},
@@ -26,7 +28,7 @@ impl Db {
     /// Opens a bounded connection pool against `url`.
     pub async fn connect(url: &str) -> Result<Self> {
         let pool = PgPoolOptions::new()
-            .max_connections(20)
+            .max_connections(CONFIG.db_max_connections)
             .acquire_timeout(Duration::from_secs(30))
             .connect(url)
             .await?;

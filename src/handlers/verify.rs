@@ -10,7 +10,7 @@ use axum::{extract::State, http::StatusCode, Json};
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::Value;
-use tracing::info;
+use tracing::debug;
 
 /// Only `program_id` / `signer` / `webhook_url` drive behaviour; the rest is
 /// validated for shape and otherwise ignored in favour of the on-chain PDA.
@@ -52,7 +52,7 @@ pub async fn verify_async(
     State(db): State<Db>,
     Json(req): Json<VerifyRequest>,
 ) -> Result<(StatusCode, Json<VerifyResponse>)> {
-    info!("/verify program={}", req.program_id);
+    debug!("verify program={}", req.program_id);
     let (build_params, _signer, _state) =
         resolve_build_params(&req.program_id, req.signer.map(|s| s.0)).await?;
     let webhook = req.webhook_url.map(|w| w.into_inner());
@@ -64,8 +64,8 @@ pub async fn verify_with_signer(
     State(db): State<Db>,
     Json(req): Json<VerifyWithSignerRequest>,
 ) -> Result<(StatusCode, Json<VerifyResponse>)> {
-    info!(
-        "/verify-with-signer program={} signer={}",
+    debug!(
+        "verify-with-signer program={} signer={}",
         req.program_id, req.signer
     );
     let (build_params, _signer, _state) =
@@ -83,7 +83,7 @@ pub async fn verify_sync(
     State(db): State<Db>,
     Json(req): Json<VerifyRequest>,
 ) -> Result<(StatusCode, Json<Value>)> {
-    info!("/verify_sync program={}", req.program_id);
+    debug!("verify_sync program={}", req.program_id);
     let (params, _signer, _state) =
         resolve_build_params(&req.program_id, req.signer.map(|s| s.0)).await?;
 
