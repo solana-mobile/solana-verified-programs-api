@@ -121,7 +121,7 @@ pub struct BuildRow {
 #[diesel(table_name = program_state)]
 pub struct ProgramStateRow {
     pub on_chain_hash: Option<String>,
-    pub is_frozen: bool,
+    pub is_frozen: Option<bool>,
     pub is_closed: bool,
 }
 

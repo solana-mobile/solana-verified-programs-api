@@ -29,7 +29,7 @@ pub async fn status(
         .as_ref()
         .and_then(|s| s.on_chain_hash.clone())
         .unwrap_or_default();
-    let is_frozen = state.as_ref().is_some_and(|s| s.is_frozen);
+    let is_frozen = state.as_ref().is_some_and(|s| s.is_frozen.unwrap_or(false));
     let is_closed = state.as_ref().is_some_and(|s| s.is_closed);
     // best_build needs the on-chain hash to break ties when multiple
     // completed builds exist (post-upgrade history). Sequential is the
@@ -81,7 +81,7 @@ pub async fn status_all(
         .as_ref()
         .and_then(|s| s.on_chain_hash.clone())
         .unwrap_or_default();
-    let is_frozen = state.as_ref().is_some_and(|s| s.is_frozen);
+    let is_frozen = state.as_ref().is_some_and(|s| s.is_frozen.unwrap_or(false));
     let is_closed = state.as_ref().is_some_and(|s| s.is_closed);
 
     let builds = db.completed_builds_by_signer(&program_id).await?;

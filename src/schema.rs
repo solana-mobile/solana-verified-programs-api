@@ -1,9 +1,4 @@
 // @generated automatically by Diesel CLI.
-//
-// Hand edit kept after `diesel print-schema`:
-//   `cargo_args` from `Array<Nullable<Text>>` → `Array<Text>`. Postgres
-//   permits NULL elements in TEXT[] but we never insert them, so the
-//   application type stays `Option<Vec<String>>`.
 
 diesel::table! {
     build_logs (id) {
@@ -23,14 +18,17 @@ diesel::table! {
         lib_name -> Nullable<Text>,
         base_docker_image -> Nullable<Text>,
         mount_path -> Nullable<Text>,
+        // Hand-edited: Postgres TEXT[] permits NULL elements, but we never
+        // insert NULLs. Mapping as `Array<Text>` avoids forcing every call
+        // site to handle a `Vec<Option<String>>`.
         cargo_args -> Nullable<Array<Text>>,
         bpf_flag -> Bool,
-        arch -> Nullable<Text>,
-        signer -> Nullable<Text>,
+        created_at -> Timestamptz,
         status -> Text,
+        signer -> Nullable<Text>,
+        arch -> Nullable<Text>,
         executable_hash -> Nullable<Text>,
         error_message -> Nullable<Text>,
-        created_at -> Timestamptz,
         completed_at -> Nullable<Timestamptz>,
     }
 }
@@ -38,12 +36,16 @@ diesel::table! {
 diesel::table! {
     program_state (program_id) {
         program_id -> Text,
-        on_chain_hash -> Nullable<Text>,
         authority -> Nullable<Text>,
-        is_frozen -> Bool,
-        is_closed -> Bool,
         last_checked -> Timestamptz,
+        is_frozen -> Nullable<Bool>,
+        is_closed -> Bool,
+        on_chain_hash -> Nullable<Text>,
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(build_logs, builds, program_state,);
+diesel::allow_tables_to_appear_in_same_query!(
+    build_logs,
+    builds,
+    program_state,
+);
