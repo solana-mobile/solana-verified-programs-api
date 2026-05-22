@@ -20,7 +20,7 @@ use crate::{
 use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
 use serde_json::Value;
-use solana_sdk::pubkey::Pubkey;
+use solana_pubkey::Pubkey;
 use std::str::FromStr;
 use tracing::info;
 

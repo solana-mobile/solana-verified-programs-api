@@ -3,7 +3,7 @@
 //! `getMultipleAccounts` calls.
 
 use crate::{config::CONFIG, db::Db, onchain::snapshot_programs};
-use solana_sdk::pubkey::Pubkey;
+use solana_pubkey::Pubkey;
 use std::{str::FromStr, time::Duration};
 use tracing::{error, info};
 

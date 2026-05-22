@@ -2,7 +2,7 @@
 //! parsing — once you hold one of these, the value is already valid.
 
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
-use solana_sdk::pubkey::Pubkey;
+use solana_pubkey::Pubkey;
 use std::{fmt, str::FromStr};
 
 /// A Solana program address.

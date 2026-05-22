@@ -57,8 +57,8 @@ impl From<solana_client::client_error::ClientError> for ApiError {
     }
 }
 
-impl From<solana_sdk::pubkey::ParsePubkeyError> for ApiError {
-    fn from(err: solana_sdk::pubkey::ParsePubkeyError) -> Self {
+impl From<solana_pubkey::ParsePubkeyError> for ApiError {
+    fn from(err: solana_pubkey::ParsePubkeyError) -> Self {
         ApiError::BadRequest(format!("invalid pubkey: {err}"))
     }
 }

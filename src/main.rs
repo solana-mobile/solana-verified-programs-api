@@ -31,7 +31,7 @@ async fn main() {
 
     sweep::spawn(db.clone());
 
-    let app = routes::build(db);
+    let app = routes::initialize_router(db);
     let addr = SocketAddr::from(([0, 0, 0, 0], CONFIG.port));
     tracing::info!("listening on {}", addr);
 

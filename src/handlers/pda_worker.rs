@@ -6,7 +6,7 @@ use crate::{
     error::{ApiError, Result},
     handlers::{is_authorized, parse_helius, refresh_state},
     onchain::{OtterBuildParams, OTTER_VERIFY_PROGRAM_ID},
-    rpc::rpc,
+    rpc::get_rpc_manager,
 };
 use axum::{
     extract::State,
@@ -15,7 +15,7 @@ use axum::{
 };
 use borsh::BorshDeserialize;
 use serde_json::Value;
-use solana_sdk::pubkey::Pubkey;
+use solana_pubkey::Pubkey;
 use std::str::FromStr;
 use tracing::{error, info, warn};
 
@@ -56,8 +56,8 @@ async fn process_pda(db: &Db, program_id: &str, pda_account: &str) -> Result<()>
 
     let pda_pubkey =
         Pubkey::from_str(pda_account).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    let data = rpc()
-        .run(|client| {
+    let data = get_rpc_manager()
+        .execute_with_retry(|client| {
             let pda = pda_pubkey;
             async move {
                 client

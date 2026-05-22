@@ -13,7 +13,7 @@ use crate::{
     types::ProgramId,
 };
 use chrono::Utc;
-use solana_sdk::pubkey::Pubkey;
+use solana_pubkey::Pubkey;
 use std::{process::Stdio, str::FromStr, time::Duration};
 use tokio::{io::AsyncWriteExt, process::Command};
 use tracing::{error, info};
@@ -94,7 +94,7 @@ pub async fn run_build(build_id: Uuid, params: &NewBuild, db: &Db) -> Result<Ver
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        if let Err(e) = logs::write(&log_id, &stderr, &stdout).await {
+        if let Err(e) = logs::write_logs(&stderr, &stdout, &log_id).await {
             error!("write build logs: {}", e);
         }
         if let Err(e) = db

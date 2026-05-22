@@ -24,5 +24,5 @@ pub async fn fetch(
             json!({ "error": "We could not find the logs for this build" }),
         ));
     };
-    Ok(Json(logs::read(&file).await))
+    Ok(Json(logs::read_logs(&file).await))
 }

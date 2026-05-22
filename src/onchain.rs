@@ -1,6 +1,6 @@
 //! Everything that touches the Solana chain.
 
-use crate::{error::ApiError, error::Result, rpc::rpc};
+use crate::{error::ApiError, error::Result, rpc::get_rpc_manager};
 use borsh::{BorshDeserialize, BorshSerialize};
 use sha2::{Digest, Sha256};
 use solana_account_decoder::parse_bpf_loader::{
@@ -10,21 +10,22 @@ use solana_client::{
     nonblocking::rpc_client::RpcClient, rpc_client::GetConfirmedSignaturesForAddress2Config,
     rpc_config::RpcTransactionConfig,
 };
-use solana_sdk::{pubkey::Pubkey, signature::Signature};
+use solana_pubkey::Pubkey;
+use solana_signature::Signature;
 use solana_sdk_ids::{bpf_loader, bpf_loader_deprecated, bpf_loader_upgradeable};
 use solana_transaction_status::{EncodedTransaction, UiMessage, UiTransactionEncoding};
 use std::{collections::HashMap, str::FromStr};
 use tracing::warn;
 
 pub const OTTER_VERIFY_PROGRAM_ID: Pubkey =
-    solana_sdk::pubkey!("verifycLy8mB96wd9wqq3WDXQwM4oU6r42Th37Db9fC");
+    solana_pubkey::pubkey!("verifycLy8mB96wd9wqq3WDXQwM4oU6r42Th37Db9fC");
 
 /// Whitelisted Otter Verify signers, tried in order when no explicit signer
 /// or program-authority claim exists.
 pub const SIGNER_KEYS: [Pubkey; 3] = [
-    solana_sdk::pubkey!("9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU"),
-    solana_sdk::pubkey!("CyJj5ejJAUveDXnLduJbkvwjxcmWJNqCuB9DR7AExrHn"),
-    solana_sdk::pubkey!("5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r"),
+    solana_pubkey::pubkey!("9VWiUUhgNoRwTH5NVehYJEDwcotwYX3VgW4MChiHPAqU"),
+    solana_pubkey::pubkey!("CyJj5ejJAUveDXnLduJbkvwjxcmWJNqCuB9DR7AExrHn"),
+    solana_pubkey::pubkey!("5vJwnLeyjV8uNJSp1zn7VLW8GwiQbcsQbGaVSwRmkE4r"),
 ];
 
 // Stable per the BPF loader v3 spec:
@@ -143,8 +144,8 @@ async fn snapshot_chunk(
     out: &mut HashMap<Pubkey, ProgramOnchainState>,
 ) -> Result<()> {
     let ids_vec = ids.to_vec();
-    let accounts = rpc()
-        .run(|client| {
+    let accounts = get_rpc_manager()
+        .execute_with_retry(|client| {
             let ids_vec = ids_vec.clone();
             async move {
                 client
@@ -191,8 +192,8 @@ async fn snapshot_chunk(
     }
 
     let pdas: Vec<Pubkey> = to_fetch.iter().map(|(_, p)| *p).collect();
-    let pda_accounts = rpc()
-        .run(|client| {
+    let pda_accounts = get_rpc_manager()
+        .execute_with_retry(|client| {
             let pdas = pdas.clone();
             async move {
                 client
@@ -286,8 +287,8 @@ pub async fn get_program_state(program_id: &Pubkey) -> Result<ProgramOnchainStat
 async fn recover_burned_authority(program_id: &Pubkey) -> Result<Option<String>> {
     let program_data_pda =
         Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id()).0;
-    rpc()
-        .run(|client| async move {
+    get_rpc_manager()
+        .execute_with_retry(|client| async move {
             let cfg = GetConfirmedSignaturesForAddress2Config {
                 limit: Some(1),
                 before: None,
@@ -359,8 +360,8 @@ pub async fn get_otter_verify_params(
     let authority = authority.map(|s| s.to_string());
     let program = *program;
 
-    rpc()
-        .run(move |client| {
+    get_rpc_manager()
+        .execute_with_retry(move |client| {
             let authority = authority.clone();
             async move {
                 if let Some(signer) = explicit_signer {
@@ -395,8 +396,8 @@ pub async fn get_otter_verify_params(
 pub async fn is_program_buffer_missing(program_id: &Pubkey) -> bool {
     let buffer =
         Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id()).0;
-    let r = rpc()
-        .run(|c| async move {
+    let r = get_rpc_manager()
+        .execute_with_retry(|c| async move {
             match c.get_account(&buffer).await {
                 Ok(_) => Ok(false),
                 Err(e) => {
