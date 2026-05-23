@@ -5,11 +5,11 @@
 //! for upgrades the `/pda` webhook missed.
 
 use crate::{
+    build,
     db::{DbClient, NewBuild},
-    services::onchain::{get_otter_verify_params, snapshot_programs},
-    services::verification,
+    onchain::{get_otter_verify_params, snapshot_programs},
     state::AppState,
-    validation::Address,
+    types::Address,
 };
 use solana_pubkey::Pubkey;
 use std::{str::FromStr, time::Duration};
@@ -49,8 +49,8 @@ impl<'a> BackgroundJobManager<'a> {
         }
     }
 
-    pub async fn get_health_status(&self) -> crate::responses::BackgroundJobHealth {
-        use crate::responses::{BackgroundJobHealth, BackgroundJobStatus};
+    pub async fn get_health_status(&self) -> crate::api::responses::BackgroundJobHealth {
+        use crate::api::responses::{BackgroundJobHealth, BackgroundJobStatus};
         let last = self.db.last_sweep_at().await.ok().flatten();
         let now = chrono::Utc::now();
         let interval = chrono::Duration::seconds(self.sweep_interval_seconds as i64);
@@ -165,7 +165,7 @@ async fn reverify_one(
     info!("sweep: re-verifying {} (build {})", program_id, build_id);
     let task_state = state.clone();
     tokio::spawn(async move {
-        verification::execute(build_id, new_build, task_state, None).await;
+        build::execute(build_id, new_build, task_state, None).await;
     });
     Ok(())
 }

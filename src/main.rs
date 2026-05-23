@@ -1,23 +1,22 @@
 use std::net::SocketAddr;
 
 mod api;
+mod build;
 mod config;
 mod db;
 mod errors;
-mod responses;
-mod services;
+mod onchain;
 mod state;
-mod validation;
+mod sweep;
+mod types;
 
 use crate::state::AppState;
 
-/// Result type for API
+/// Result type for the API.
 pub type Result<T> = std::result::Result<T, errors::ApiError>;
 
 #[tokio::main]
 async fn main() {
-    // Initialize logging. `fmt::init()` alone filters everything when
-    // RUST_LOG is unset; default to INFO so deployments aren't silent.
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -50,14 +49,13 @@ async fn main() {
         config.max_reverifies_per_sweep,
     );
 
-    let bg_job_manager =
-        services::background_jobs::BackgroundJobManager::new(&db, config.sweep_interval_seconds);
+    let bg_job_manager = sweep::BackgroundJobManager::new(&db, config.sweep_interval_seconds);
     let initial_health = bg_job_manager.get_health_status().await;
     tracing::info!("Background job initial status: {:?}", initial_health);
 
-    services::background_jobs::spawn(state.clone());
+    sweep::spawn(state.clone());
 
-    let app = api::initialize_router(state);
+    let app = api::routes::initialize_router(state);
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("Server starting on {}", addr);
 
