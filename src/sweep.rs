@@ -5,8 +5,10 @@
 //! for upgrades the `/pda` webhook missed.
 
 use crate::{
+    api::responses::{BackgroundJobHealth, BackgroundJobStatus},
     build,
     db::{DbClient, NewBuild},
+    errors::Result,
     onchain::{get_otter_verify_params, snapshot_programs},
     state::AppState,
     types::Address,
@@ -49,8 +51,7 @@ impl<'a> BackgroundJobManager<'a> {
         }
     }
 
-    pub async fn get_health_status(&self) -> crate::api::responses::BackgroundJobHealth {
-        use crate::api::responses::{BackgroundJobHealth, BackgroundJobStatus};
+    pub async fn get_health_status(&self) -> BackgroundJobHealth {
         let last = self.db.last_sweep_at().await.ok().flatten();
         let now = chrono::Utc::now();
         let interval = chrono::Duration::seconds(self.sweep_interval_seconds as i64);
@@ -84,7 +85,7 @@ impl<'a> BackgroundJobManager<'a> {
     }
 }
 
-async fn run_once(state: &AppState) -> crate::errors::Result<()> {
+async fn run_once(state: &AppState) -> Result<()> {
     let db = &state.db;
     let ids = db.sweep_program_ids().await?;
     if ids.is_empty() {
@@ -141,7 +142,7 @@ async fn reverify_one(
     state: &AppState,
     program_id: &Address,
     authority: Option<String>,
-) -> crate::errors::Result<()> {
+) -> Result<()> {
     // signer=None -> tries the authority, then the whitelisted SIGNER_KEYS.
     let (otter_params, _) =
         match get_otter_verify_params(&state.rpc, &program_id.to_string(), None, authority).await {
